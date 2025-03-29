@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image"; // Import the Image component
 import { useRouter } from "next/navigation";
 
 type MediaItem = {
@@ -17,6 +18,7 @@ export default function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const router = useRouter();
+  const modalRef = useRef<HTMLDivElement>(null); // For focus trapping in the modal
 
   useEffect(() => {
     console.log("Gallery page useEffect triggered");
@@ -41,12 +43,21 @@ export default function GalleryPage() {
           },
         });
         console.log("Fetch response status:", response.status);
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to fetch media");
-        }
-        const data = await response.json();
 
+        if (!response.ok) {
+          const contentType = response.headers.get("content-type");
+          let errorData;
+          if (contentType && contentType.includes("application/json")) {
+            errorData = await response.json();
+            throw new Error(errorData.error || "Failed to fetch media");
+          } else {
+            const text = await response.text();
+            console.error("Non-JSON response from /api/media:", text);
+            throw new Error(`Failed to fetch media: Server returned status ${response.status} with response: ${text}`);
+          }
+        }
+
+        const data = await response.json();
         setMedia(data);
       } catch (err) {
         console.error("Fetch error:", err);
@@ -70,8 +81,49 @@ export default function GalleryPage() {
     setSelectedMedia(null);
   };
 
+  // Focus trapping for accessibility in the modal
+  useEffect(() => {
+    if (selectedMedia && modalRef.current) {
+      const focusableElements = modalRef.current.querySelectorAll(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+      );
+      const firstElement = focusableElements[0] as HTMLElement;
+      const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          closeModal();
+        }
+        if (e.key === "Tab") {
+          if (e.shiftKey) {
+            if (document.activeElement === firstElement) {
+              e.preventDefault();
+              lastElement.focus();
+            }
+          } else {
+            if (document.activeElement === lastElement) {
+              e.preventDefault();
+              firstElement.focus();
+            }
+          }
+        }
+      };
+
+      firstElement?.focus();
+      document.addEventListener("keydown", handleKeyDown);
+
+      return () => {
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+  }, [selectedMedia]);
+
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
 
   if (error) {
@@ -106,9 +158,11 @@ export default function GalleryPage() {
               onClick={() => openModal(item)}
             >
               {item.fileType === "image" ? (
-                <img
+                <Image
                   src={item.url}
                   alt={item.fileKey}
+                  width={300} // Adjust based on your design
+                  height={192} // Adjust based on your design (h-48 = 192px)
                   className="w-full h-48 object-cover rounded"
                 />
               ) : (
@@ -138,7 +192,7 @@ export default function GalleryPage() {
             }
           }}
         >
-          <div className="relative bg-white p-4 rounded max-w-3xl w-full">
+          <div ref={modalRef} className="relative bg-white p-4 rounded max-w-3xl w-full">
             <button
               onClick={() => {
                 console.log("Close button clicked");
@@ -149,9 +203,11 @@ export default function GalleryPage() {
               Close
             </button>
             {selectedMedia.fileType === "image" ? (
-              <img
+              <Image
                 src={selectedMedia.url}
                 alt={selectedMedia.fileKey}
+                width={800} // Adjust based on your design
+                height={600} // Adjust based on your design
                 className="w-full h-auto max-h-[80vh] object-contain"
               />
             ) : (

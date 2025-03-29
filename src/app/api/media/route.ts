@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 
-const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
+const s3Client = new S3Client({});
+const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 const verifier = CognitoJwtVerifier.create({
   userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!,
@@ -15,18 +16,21 @@ const verifier = CognitoJwtVerifier.create({
   clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
 });
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  console.log("GET request received at /api/media");
   const authHeader = request.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  console.log("Token received:", token ? "Yes" : "No");
-
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  console.log("Token:", token ? "Present" : "Missing");
+  if (!token) {
+    console.log("No token provided, returning 401");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let username: string;
   try {
     const payload = await verifier.verify(token);
-    console.log("Token payload:", payload); // Log the entire payload
-    username = payload["cognito:username"] || payload.sub;
+    console.log("Token payload:", payload);
+    username = payload.sub;
     console.log("Verified username:", username);
   } catch (error) {
     console.error("Token verification failed:", error);
@@ -34,34 +38,42 @@ export async function GET(request: Request) {
   }
 
   try {
-    const command = new ScanCommand({ TableName: process.env.DYNAMODB_TABLE_NAME });
-    const result = await docClient.send(command);
-    console.log("DynamoDB items:", result.Items);
+    // Fetch media items from DynamoDB
+    console.log("Fetching media items from DynamoDB...");
+    const scanCommand = new ScanCommand({
+      TableName: process.env.DYNAMODB_TABLE_NAME,
+      FilterExpression: "uploadedBy = :username",
+      ExpressionAttributeValues: {
+        ":username": { S: username },
+      },
+    });
+    const dynamoData = await docClient.send(scanCommand);
+    console.log("DynamoDB scan successful");
 
-    if (!result.Items) return NextResponse.json([]);
+    const mediaItems = dynamoData.Items?.map((item) => ({
+      fileKey: item.fileKey.S!,
+      fileType: item.fileType.S!,
+      uploadDate: item.uploadDate.S!,
+      uploadedBy: item.uploadedBy.S!,
+    })) || [];
 
-    const mediaItems = await Promise.all(
-      result.Items.map(async (item) => {
-        const fileKey = item.fileKey.S!;
-        const fileType = item.fileType.S!;
-        const uploadDate = item.uploadDate.S!;
-        const uploadedBy = item.uploadedBy.S!;
-
-        const s3Command = new GetObjectCommand({
+    // Generate presigned URLs for each media item
+    const mediaWithUrls = await Promise.all(
+      mediaItems.map(async (item) => {
+        const getObjectCommand = new GetObjectCommand({
           Bucket: process.env.S3_BUCKET_NAME,
-          Key: fileKey,
+          Key: item.fileKey,
         });
-        const url = await getSignedUrl(s3Client, s3Command, { expiresIn: 3600 });
-        return { fileKey, fileType, uploadDate, uploadedBy, url };
+        const url = await getSignedUrl(s3Client, getObjectCommand, { expiresIn: 86400 }); // 24 hours expiry
+        return { ...item, url };
       })
     );
 
-    const userMedia = mediaItems.filter((item) => item.uploadedBy === username);
-    console.log("Filtered user media:", userMedia);
-
-    return NextResponse.json(userMedia);
+    return NextResponse.json(mediaWithUrls);
   } catch (error) {
-    console.error("Error fetching media:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const err = error as Error;
+    console.error("Fetch media error:", err);
+    console.error("Error stack:", err.stack);
+    return NextResponse.json({ error: `Internal server error: ${err.message}` }, { status: 500 });
   }
 }
