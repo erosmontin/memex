@@ -21,7 +21,6 @@ export default function GalleryPage() {
   useEffect(() => {
     console.log("Gallery page useEffect triggered");
     const token = localStorage.getItem("token");
-    console.log("Token in localStorage:", token ? "Yes" : "No");
 
     if (!token) {
       console.log("No token found, redirecting to login");
@@ -47,7 +46,7 @@ export default function GalleryPage() {
           throw new Error(errorData.error || "Failed to fetch media");
         }
         const data = await response.json();
-        console.log("Fetched media data:", data);
+
         setMedia(data);
       } catch (err) {
         console.error("Fetch error:", err);
