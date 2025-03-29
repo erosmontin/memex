@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { DynamoDBClient, DeleteItemCommand, GetItemCommand } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBClient, DeleteItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
@@ -44,22 +44,21 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Fetch the item from DynamoDB to verify ownership
-    console.log("Fetching item from DynamoDB with GetItemCommand...");
-    const getCommand = new GetItemCommand({
+    console.log("Fetching item from DynamoDB...");
+    const getCommand = new ScanCommand({
       TableName: process.env.DYNAMODB_TABLE_NAME,
-      Key: {
-        fileKey: { S: fileKey },
-      },
+      FilterExpression: "fileKey = :fileKey",
+      ExpressionAttributeValues: { ":fileKey": { S: fileKey } },
     });
     const result = await docClient.send(getCommand);
-    console.log("DynamoDB GetItem result:", result);
+    console.log("DynamoDB result:", result);
 
-    if (!result.Item) {
+    if (!result.Items || result.Items.length === 0) {
       console.log("Item not found in DynamoDB, returning 404");
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
 
-    const item = result.Item;
+    const item = result.Items[0];
     console.log("Item found:", item);
     if (item.uploadedBy.S !== username) {
       console.log("User does not own this item, returning 403");

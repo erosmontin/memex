@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image"; // Import the Image component
 
 type MediaItem = {
   fileKey: string;
@@ -19,35 +18,9 @@ export default function GalleryPage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const router = useRouter();
 
-  const fetchMedia = async () => {
-    console.log("Fetching media from /api/media");
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/media", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      console.log("Fetch response status:", response.status);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to fetch media");
-      }
-      const data = await response.json();
-      console.log("Fetched media data:", data);
-      setMedia(data);
-    } catch (err) {
-      console.error("Fetch error:", err);
-      setError((err as Error).message || "An error occurred");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     console.log("Gallery page useEffect triggered");
     const token = localStorage.getItem("token");
-    console.log("Token in localStorage:", token ? "Yes" : "No");
 
     if (!token) {
       console.log("No token found, redirecting to login");
@@ -58,6 +31,30 @@ export default function GalleryPage() {
       }
       return;
     }
+
+    const fetchMedia = async () => {
+      console.log("Fetching media from /api/media");
+      try {
+        const response = await fetch("/api/media", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        console.log("Fetch response status:", response.status);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to fetch media");
+        }
+        const data = await response.json();
+
+        setMedia(data);
+      } catch (err) {
+        console.error("Fetch error:", err);
+        setError((err as Error).message || "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
 
     setTimeout(() => {
       fetchMedia();
@@ -73,41 +70,6 @@ export default function GalleryPage() {
     setSelectedMedia(null);
   };
 
-  const handleDelete = async (fileKey: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
-  
-    console.log("Attempting to delete item with fileKey:", fileKey); // Add this log
-  
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/delete", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ fileKey }),
-      });
-  
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type");
-        let errorData;
-        if (contentType && contentType.includes("application/json")) {
-          errorData = await response.json();
-          throw new Error(errorData.error || "Failed to delete item");
-        } else {
-          const text = await response.text();
-          console.error("Non-JSON response from /api/delete:", text);
-          throw new Error(`Failed to delete item: Server returned status ${response.status}`);
-        }
-      }
-  
-      await fetchMedia();
-    } catch (err) {
-      console.error("Delete error:", err);
-      setError((err as Error).message || "An error occurred");
-    }
-  };
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
@@ -138,38 +100,28 @@ export default function GalleryPage() {
           </p>
         ) : (
           media.map((item) => (
-            <div key={item.fileKey} className="bg-white p-4 rounded shadow-md">
-              <div
-                className="cursor-pointer"
-                onClick={() => openModal(item)}
-              >
-                {item.fileType === "image" ? (
-                  <Image
-                    src={item.url}
-                    alt={item.fileKey}
-                    width={500} // Set a reasonable width
-                    height={300} // Set a reasonable height
-                    className="w-full h-48 object-cover rounded"
-                    unoptimized // Disable optimization for S3 images (optional)
-                  />
-                ) : (
-                  <video
-                    src={item.url}
-                    className="w-full h-48 object-cover rounded"
-                    muted
-                  />
-                )}
-                <p className="mt-2 text-sm text-gray-600">
-                  {item.fileKey} <br />
-                  Uploaded: {new Date(item.uploadDate).toLocaleString()}
-                </p>
-              </div>
-              <button
-                onClick={() => handleDelete(item.fileKey)}
-                className="mt-2 bg-red-500 text-white p-2 rounded hover:bg-red-600 w-full"
-              >
-                Delete
-              </button>
+            <div
+              key={item.fileKey}
+              className="bg-white p-4 rounded shadow-md cursor-pointer"
+              onClick={() => openModal(item)}
+            >
+              {item.fileType === "image" ? (
+                <img
+                  src={item.url}
+                  alt={item.fileKey}
+                  className="w-full h-48 object-cover rounded"
+                />
+              ) : (
+                <video
+                  src={item.url}
+                  className="w-full h-48 object-cover rounded"
+                  muted
+                />
+              )}
+              <p className="mt-2 text-sm text-gray-600">
+                {item.fileKey} <br />
+                Uploaded: {new Date(item.uploadDate).toLocaleString()}
+              </p>
             </div>
           ))
         )}
@@ -197,30 +149,21 @@ export default function GalleryPage() {
               Close
             </button>
             {selectedMedia.fileType === "image" ? (
-              <Image
+              <img
                 src={selectedMedia.url}
                 alt={selectedMedia.fileKey}
-                width={800} // Set a reasonable width for the modal
-                height={600} // Set a reasonable height for the modal
                 className="w-full h-auto max-h-[80vh] object-contain"
-                unoptimized // Disable optimization for S3 images (optional)
               />
             ) : (
-              <div className="relative">
-                <video
-                  src={selectedMedia.url}
-                  controls
-                  className="w-full h-auto max-h-[80vh] object-contain z-0"
-                />
-                <div className="absolute inset-0 z-10" />
-              </div>
+              <video
+                src={selectedMedia.url}
+                controls
+                className="w-full h-auto max-h-[80vh] object-contain z-0"
+              />
             )}
             <p className="mt-2 text-sm text-gray-600 text-center">
               {selectedMedia.fileKey} <br />
-              Uploaded: {new Date(selectedMedia.uploadDate).toLocaleString()} <br />
-              <span className="text-green-500">
-                This file is safely stored in the cloud. You can delete the local copy from your device to free up space.
-              </span>
+              Uploaded: {new Date(selectedMedia.uploadDate).toLocaleString()}
             </p>
           </div>
         </div>

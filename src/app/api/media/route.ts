@@ -25,8 +25,8 @@ export async function GET(request: Request) {
   let username: string;
   try {
     const payload = await verifier.verify(token);
-    console.log("Token payload:", payload);
-    username = payload.sub; // Use sub explicitly
+    console.log("Token payload:", payload); // Log the entire payload
+    username = payload["cognito:username"] || payload.sub;
     console.log("Verified username:", username);
   } catch (error) {
     console.error("Token verification failed:", error);

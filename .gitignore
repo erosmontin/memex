@@ -39,3 +39,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+memex-app/.aws-sam/build/GalleryFunction/samconfig.toml
