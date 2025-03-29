@@ -7,10 +7,10 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [newPassword, setNewPassword] = useState(""); // For new password input
+  const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState("");
-  const [isNewPasswordRequired, setIsNewPasswordRequired] = useState(false); // Toggle UI state
-  const [cognitoUser, setCognitoUser] = useState<CognitoUser | null>(null); // Store user instance
+  const [isNewPasswordRequired, setIsNewPasswordRequired] = useState(false);
+  const [cognitoUser, setCognitoUser] = useState<CognitoUser | null>(null);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -31,15 +31,15 @@ export default function LoginPage() {
       onSuccess: (result) => {
         const token = result.getIdToken().getJwtToken();
         localStorage.setItem("token", token);
+        console.log("Token set in localStorage:", token);
         router.push("/dashboard");
       },
       onFailure: (err) => {
         setError(err.message || "Login failed");
       },
-      newPasswordRequired: (userAttributes) => {
-        // Cognito requires a new password
+      newPasswordRequired: () => { // Remove the _userAttributes parameter
         setIsNewPasswordRequired(true);
-        setCognitoUser(user); // Store the user instance for later
+        setCognitoUser(user);
         setError("Please set a new password.");
       },
     });
@@ -57,6 +57,7 @@ export default function LoginPage() {
       onSuccess: (result) => {
         const token = result.getIdToken().getJwtToken();
         localStorage.setItem("token", token);
+        console.log("new password:", token);
         router.push("/dashboard");
       },
       onFailure: (err) => {

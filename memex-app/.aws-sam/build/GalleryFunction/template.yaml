@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Gallery Web App - A Next.js application for uploading and managing media files, deployed on AWS Lambda with API Gateway, S3, and DynamoDB.
+
+# Parameters for user input during deployment
+Parameters:
+  CognitoUserPoolId:
+    Type: String
+    Description: The ID of the Cognito User Pool for authentication
+  CognitoClientId:
+    Type: String
+    Description: The Client ID of the Cognito User Pool for authentication
+
+# Global settings for Lambda functions
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs18.x
+
+# Resources to be created
+Resources:
+  # S3 Bucket for storing media files
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub my-media-bucket-${AWS::AccountId}-${AWS::Region}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: ['GET', 'PUT', 'DELETE']
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+
+  # DynamoDB Table for storing media metadata
+  MediaTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MediaTable
+      AttributeDefinitions:
+        - AttributeName: fileKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: fileKey
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # IAM Role for the Lambda function
+  MediaAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: MediaAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # S3 permissions for the media bucket
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub arn:aws:s3:::${MediaBucket}/*
+              # DynamoDB permissions for the media table
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                Resource: !GetAtt MediaTable.Arn
+              # CloudWatch Logs permissions for Lambda logging
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  # Lambda Function for the Next.js app
+  GalleryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: index.handler
+      Role: !GetAtt MediaAccessRole.Arn
+      Environment:
+        Variables:
+          AWS_REGION: !Ref AWS::Region
+          S3_BUCKET_NAME: !Ref MediaBucket
+          DYNAMODB_TABLE_NAME: !Ref MediaTable
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: !Ref CognitoClientId
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref GalleryApi
+            Path: /{proxy+}
+            Method: ANY
+
+  # API Gateway for the Next.js app
+  GalleryApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: Prod
+      CorsConfiguration:
+        AllowOrigins: ['*']
+        AllowHeaders: ['*']
+        AllowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS']
+        MaxAge: 600
+
+# Outputs to display after deployment
+Outputs:
+  ApiUrl:
+    Description: URL of the API Gateway endpoint
+    Value: !Sub https://${GalleryApi}.execute-api.${AWS::Region}.amazonaws.com/Prod
+  MediaBucketName:
+    Description: Name of the S3 bucket for media storage
+    Value: !Ref MediaBucket
+  MediaTableName:
+    Description: Name of the DynamoDB table for media metadata
+    Value: !Ref MediaTable

@@ -1,0 +1,11 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "memex-app"
+resolve_s3 = true
+s3_prefix = "memex-app"
+region = "us-east-1"
+profile = "user1"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+confirm_changeset = true
+parameter_overrides = "CognitoUserPoolId=\"us-east-1_PCHfbf9Jn\" CognitoClientId=\"3tt2so9a23fji757pm4oqh66u4\""
