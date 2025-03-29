@@ -25,17 +25,18 @@ export async function GET(request: Request) {
   let username: string;
   try {
     const payload = await verifier.verify(token);
-    // console.log("Token payload:", payload);
+    console.log("Token payload:", payload);
     username = payload.sub; // Use sub explicitly
+    console.log("Verified username:", username);
   } catch (error) {
-
+    console.error("Token verification failed:", error);
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
   try {
     const command = new ScanCommand({ TableName: process.env.DYNAMODB_TABLE_NAME });
     const result = await docClient.send(command);
-    // console.log("DynamoDB items:", result.Items);
+    console.log("DynamoDB items:", result.Items);
 
     if (!result.Items) return NextResponse.json([]);
 
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
     );
 
     const userMedia = mediaItems.filter((item) => item.uploadedBy === username);
+    console.log("Filtered user media:", userMedia);
 
     return NextResponse.json(userMedia);
   } catch (error) {

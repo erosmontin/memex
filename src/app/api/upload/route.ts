@@ -22,9 +22,10 @@ export async function POST(request: NextRequest) {
   let username: string;
   try {
     const payload = await verifier.verify(token);
-    username = payload.sub; // Use sub explicitly
-    console.log("Upload username:", username); // Log for debugging
-  } catch (error) {
+    username = payload.sub;
+    console.log("Upload username:", username);
+  } catch (_error) { // Rename to _error
+    console.error("Token verification failed:", _error);
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
