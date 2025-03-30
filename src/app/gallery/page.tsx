@@ -63,11 +63,16 @@ export default function GalleryPage() {
       // filter out duplicates based on fileKey.
       setMedia((prev) => {
         const combined = page === 1 ? data : [...prev, ...data];
-        // Ensure uniqueness by fileKey:
-        return combined.filter(
+        // Remove duplicate items based on fileKey
+        const unique = combined.filter(
           (item, index, self) =>
             index === self.findIndex((t) => t.fileKey === item.fileKey)
         );
+        // Sort items by uploadDate descending (most recent first)
+        unique.sort(
+          (a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime()
+        );
+        return unique;
       });
 
       if (data.length < LIMIT) {
@@ -179,6 +184,26 @@ export default function GalleryPage() {
     }
   }, [selectedMedia]);
 
+  const handleNext = () => {
+    if (!selectedMedia) return;
+    const currentIndex = media.findIndex(
+      (item) => item.fileKey === selectedMedia.fileKey
+    );
+    // Move to the next item; wraps around to the start if at the end
+    const nextIndex = (currentIndex + 1) % media.length;
+    setSelectedMedia(media[nextIndex]);
+  };
+
+  const handlePrevious = () => {
+    if (!selectedMedia) return;
+    const currentIndex = media.findIndex(
+      (item) => item.fileKey === selectedMedia.fileKey
+    );
+    // Move to the previous item; wraps around to the end if at the beginning
+    const prevIndex = (currentIndex - 1 + media.length) % media.length;
+    setSelectedMedia(media[prevIndex]);
+  };
+
   if (loading && page === 1) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -255,6 +280,31 @@ export default function GalleryPage() {
           }}
         >
           <div ref={modalRef} className="relative bg-white p-4 rounded max-w-3xl w-full">
+            {/* Navigation Buttons for Previous and Next */}
+            <div
+              className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePrevious();
+              }}
+            >
+              <button className="bg-gray-700 text-white p-2 rounded-full">
+                &#8249;
+              </button>
+            </div>
+            <div
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNext();
+              }}
+            >
+              <button className="bg-gray-700 text-white p-2 rounded-full">
+                &#8250;
+              </button>
+            </div>
+
+            {/* Existing Delete and Close Buttons */}
             <div className="absolute top-2 right-2 flex space-x-2 z-50">
               <button
                 onClick={handleDelete}
@@ -271,21 +321,24 @@ export default function GalleryPage() {
                 Close
               </button>
             </div>
+
+            {/* Media Display */}
             {selectedMedia.fileType === "image" ? (
               <Image
                 src={selectedMedia.url}
                 alt={selectedMedia.fileKey}
-                width={800} // Adjust based on your design
-                height={600} // Adjust based on your design
+                width={800}
+                height={600}
                 className="w-full h-auto max-h-[80vh] object-contain"
               />
             ) : (
               <video
                 src={selectedMedia.url}
                 controls
-                className="w-full h-auto max-h-[80vh] object-contain z-0"
+                className="w-full h-auto max-h-[80vh] object-contain"
               />
             )}
+
             {/* Social Share Buttons */}
             <div className="flex space-x-2 mt-4 justify-center">
               <a
