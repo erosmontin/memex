@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image"; // Import the Image component
 import { useRouter } from "next/navigation";
 import { toast, ToastContainer } from "react-toastify";
@@ -19,15 +19,20 @@ export default function GalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const router = useRouter();
   const modalRef = useRef<HTMLDivElement>(null); // For focus trapping in the modal
+  const observer = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const LIMIT = 12; // Number of items to fetch per page
 
-  useEffect(() => {
-    console.log("Gallery page useEffect triggered");
+  // Fetch media from API with pagination
+  const fetchMedia = useCallback(async () => {
+    setIsFetching(true);
     const token = localStorage.getItem("token");
-
     if (!token) {
-      console.log("No token found, redirecting to login");
       try {
         router.push("/");
       } catch (err) {
@@ -35,51 +40,83 @@ export default function GalleryPage() {
       }
       return;
     }
-
-    const fetchMedia = async () => {
-      console.log("Fetching media from /api/media");
-      try {
-        const response = await fetch("/api/media", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        console.log("Fetch response status:", response.status);
-
-        if (!response.ok) {
-          const contentType = response.headers.get("content-type");
-          let errorData;
-          if (contentType && contentType.includes("application/json")) {
-            errorData = await response.json();
-            throw new Error(errorData.error || "Failed to fetch media");
-          } else {
-            const text = await response.text();
-            console.error("Non-JSON response from /api/media:", text);
-            throw new Error(`Failed to fetch media: Server returned status ${response.status} with response: ${text}`);
-          }
+    try {
+      const response = await fetch(`/api/media?page=${page}&limit=${LIMIT}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type");
+        let errorData;
+        if (contentType && contentType.includes("application/json")) {
+          errorData = await response.json();
+          throw new Error(errorData.error || "Failed to fetch media");
+        } else {
+          const text = await response.text();
+          throw new Error(`Failed to fetch media: ${text}`);
         }
-
-        const data = await response.json();
-        setMedia(data);
-      } catch (err) {
-        console.error("Fetch error:", err);
-        setError((err as Error).message || "An error occurred");
-      } finally {
-        setLoading(false);
       }
-    };
+      const data: MediaItem[] = await response.json();
 
-    setTimeout(() => {
-      fetchMedia();
-    }, 100);
-  }, [router]);
+      // If API returns all items every time instead of paginated,
+      // filter out duplicates based on fileKey.
+      setMedia((prev) => {
+        const combined = page === 1 ? data : [...prev, ...data];
+        // Ensure uniqueness by fileKey:
+        return combined.filter(
+          (item, index, self) =>
+            index === self.findIndex((t) => t.fileKey === item.fileKey)
+        );
+      });
+
+      if (data.length < LIMIT) {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError((err as Error).message || "An error occurred");
+    } finally {
+      setLoading(false);
+      setIsFetching(false);
+    }
+  }, [page, router]);
+
+  // Initial fetch and subsequent page fetches
+  useEffect(() => {
+    fetchMedia();
+  }, [fetchMedia]);
+
+  // Set up IntersectionObserver on the sentinel
+  useEffect(() => {
+    if (isFetching) return;
+    if (!hasMore) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setPage((prevPage) => prevPage + 1);
+        }
+      },
+      {
+        root: null,
+        rootMargin: "20px",
+        threshold: 1.0,
+      }
+    );
+    if (sentinelRef.current) {
+      observer.current.observe(sentinelRef.current);
+    }
+    return () => {
+      if (observer.current) observer.current.disconnect();
+    };
+  }, [isFetching, hasMore]);
 
   const openModal = (item: MediaItem) => {
     setSelectedMedia(item);
   };
 
   const closeModal = () => {
-    console.log("Closing modal, setting selectedMedia to null");
     setSelectedMedia(null);
   };
 
@@ -87,7 +124,6 @@ export default function GalleryPage() {
     if (!selectedMedia) return;
     try {
       const token = localStorage.getItem("token");
-      // Assumes your API handles deletion with a DELETE request using fileKey as a query parameter
       const response = await fetch(`/api/media?fileKey=${selectedMedia.fileKey}`, {
         method: "DELETE",
         headers: {
@@ -98,7 +134,6 @@ export default function GalleryPage() {
         const data = await response.json();
         throw new Error(data.error || "Failed to delete media");
       }
-      // Remove deleted item from media
       setMedia(media.filter((item) => item.fileKey !== selectedMedia.fileKey));
       toast.success("Media deleted successfully");
       closeModal();
@@ -144,7 +179,7 @@ export default function GalleryPage() {
     }
   }, [selectedMedia]);
 
-  if (loading) {
+  if (loading && page === 1) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -206,6 +241,8 @@ export default function GalleryPage() {
           ))
         )}
       </div>
+      {/* Sentinel element for infinite scroll */}
+      <div ref={sentinelRef} className="h-4" />
 
       {/* Modal for viewing full media */}
       {selectedMedia && (
@@ -213,7 +250,6 @@ export default function GalleryPage() {
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              console.log("Clicked outside modal, closing");
               closeModal();
             }
           }}
@@ -228,7 +264,6 @@ export default function GalleryPage() {
               </button>
               <button
                 onClick={() => {
-                  console.log("Close button clicked");
                   closeModal();
                 }}
                 className="bg-gray-500 text-white p-2 rounded hover:bg-gray-600"
@@ -251,6 +286,31 @@ export default function GalleryPage() {
                 className="w-full h-auto max-h-[80vh] object-contain z-0"
               />
             )}
+            {/* Social Share Buttons */}
+            <div className="flex space-x-2 mt-4 justify-center">
+              <a
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                  "Check out this media: " + selectedMedia.url
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <button className="bg-green-500 text-white p-2 rounded hover:bg-green-600">
+                  Share on WhatsApp
+                </button>
+              </a>
+              <a
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+                  selectedMedia.url
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <button className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700">
+                  Share on Facebook
+                </button>
+              </a>
+            </div>
             <p className="mt-2 text-sm text-gray-600 text-center">
               {selectedMedia.fileKey} <br />
               Uploaded: {new Date(selectedMedia.uploadDate).toLocaleString()}
