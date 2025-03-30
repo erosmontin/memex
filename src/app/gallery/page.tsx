@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image"; // Import the Image component
 import { useRouter } from "next/navigation";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type MediaItem = {
   fileKey: string;
@@ -81,6 +83,30 @@ export default function GalleryPage() {
     setSelectedMedia(null);
   };
 
+  const handleDelete = async () => {
+    if (!selectedMedia) return;
+    try {
+      const token = localStorage.getItem("token");
+      // Assumes your API handles deletion with a DELETE request using fileKey as a query parameter
+      const response = await fetch(`/api/media?fileKey=${selectedMedia.fileKey}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete media");
+      }
+      // Remove deleted item from media
+      setMedia(media.filter((item) => item.fileKey !== selectedMedia.fileKey));
+      toast.success("Media deleted successfully");
+      closeModal();
+    } catch (error) {
+      toast.error((error as Error).message || "Delete failed");
+    }
+  };
+
   // Focus trapping for accessibility in the modal
   useEffect(() => {
     if (selectedMedia && modalRef.current) {
@@ -132,6 +158,7 @@ export default function GalleryPage() {
 
   return (
     <div className="min-h-screen p-8 bg-gray-100">
+      <ToastContainer />
       <h1 className="text-3xl font-bold text-center mb-8">My Media Gallery</h1>
       <button
         onClick={() => {
@@ -192,15 +219,23 @@ export default function GalleryPage() {
           }}
         >
           <div ref={modalRef} className="relative bg-white p-4 rounded max-w-3xl w-full">
-            <button
-              onClick={() => {
-                console.log("Close button clicked");
-                closeModal();
-              }}
-              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded hover:bg-red-600 z-50"
-            >
-              Close
-            </button>
+            <div className="absolute top-2 right-2 flex space-x-2 z-50">
+              <button
+                onClick={handleDelete}
+                className="bg-red-500 text-white p-2 rounded hover:bg-red-600"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => {
+                  console.log("Close button clicked");
+                  closeModal();
+                }}
+                className="bg-gray-500 text-white p-2 rounded hover:bg-gray-600"
+              >
+                Close
+              </button>
+            </div>
             {selectedMedia.fileType === "image" ? (
               <Image
                 src={selectedMedia.url}

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { S3Client } from "@aws-sdk/client-s3";
-import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { DynamoDBClient, ScanCommand, DeleteItemCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 
-const s3Client = new S3Client({});
-const dynamoClient = new DynamoDBClient({});
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const verifier = CognitoJwtVerifier.create({
@@ -75,5 +75,42 @@ export async function GET(request: NextRequest) {
     console.error("Fetch media error:", err);
     console.error("Error stack:", err.stack);
     return NextResponse.json({ error: `Internal server error: ${err.message}` }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  // Extract fileKey from the query string
+  const { searchParams } = new URL(request.url);
+  const fileKey = searchParams.get("fileKey");
+  if (!fileKey) {
+    return NextResponse.json({ error: "fileKey is required" }, { status: 400 });
+  }
+
+  // Optionally verify token/authorization here
+
+  try {
+    // Delete the file from S3
+    const s3DeleteCommand = new DeleteObjectCommand({
+      Bucket: process.env.S3_BUCKET_NAME,
+      Key: fileKey,
+    });
+    await s3Client.send(s3DeleteCommand);
+
+    // Delete the metadata from DynamoDB
+    const dynamoDeleteCommand = new DeleteItemCommand({
+      TableName: process.env.DYNAMODB_TABLE_NAME,
+      Key: {
+        fileKey: { S: fileKey },
+      },
+    });
+    await dynamoClient.send(dynamoDeleteCommand);
+
+    return NextResponse.json({ message: "File deleted successfully" });
+  } catch (err) {
+    console.error("Delete error:", err);
+    return NextResponse.json(
+      { error: (err as Error).message || "Failed to delete file" },
+      { status: 500 }
+    );
   }
 }
