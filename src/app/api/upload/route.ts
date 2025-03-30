@@ -14,6 +14,8 @@ const verifier = CognitoJwtVerifier.create({
   clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
 });
 
+export const config = { runtime: "nodejs" };
+
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
