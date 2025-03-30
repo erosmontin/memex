@@ -23,52 +23,72 @@ export async function POST(request: NextRequest) {
   let username: string;
   try {
     const payload = await verifier.verify(token);
-    username = payload.sub; // Use sub explicitly
-    console.log("Upload username:", username); // Log for debugging
+    username = payload.sub;
+    console.log("Upload username:", username);
   } catch (_error) {
-    // _error is intentionally unused
     console.error("Token verification failed:", _error);
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as File;
-    if (
-      !file ||
-      (!file.type.startsWith("image/") && !file.type.startsWith("video/"))
-    ) {
+    // Retrieve all files with the key "files"
+    const files = formData.getAll("files") as File[];
+    if (files.length === 0) {
       return NextResponse.json(
-        { error: "Please upload an image or video" },
+        { error: "Please upload at least one image or video" },
         { status: 400 }
       );
     }
 
-    const fileType = file.type.startsWith("image/") ? "image" : "video";
-    const fileKey = `${fileType}s/${Date.now()}-${file.name}`;
+    // Process each file individually
+    const uploadResults = [];
+    for (const file of files) {
+      if (
+        !file ||
+        (!file.type.startsWith("image/") && !file.type.startsWith("video/"))
+      ) {
+        continue; // Skip invalid file types
+      }
 
-    // Upload to S3
-    const s3Command = new PutObjectCommand({
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: fileKey,
-      Body: Buffer.from(await file.arrayBuffer()),
-      ContentType: file.type,
+      const fileType = file.type.startsWith("image/") ? "image" : "video";
+      const fileKey = `${fileType}s/${Date.now()}-${file.name}`;
+
+      // Upload to S3
+      const s3Command = new PutObjectCommand({
+        Bucket: process.env.S3_BUCKET_NAME,
+        Key: fileKey,
+        Body: Buffer.from(await file.arrayBuffer()),
+        ContentType: file.type,
+      });
+      await s3Client.send(s3Command);
+
+      // Save metadata to DynamoDB
+      const dynamoCommand = new PutItemCommand({
+        TableName: process.env.DYNAMODB_TABLE_NAME,
+        Item: {
+          fileKey: { S: fileKey },
+          fileType: { S: fileType },
+          uploadDate: { S: new Date().toISOString() },
+          uploadedBy: { S: username },
+        },
+      });
+      await docClient.send(dynamoCommand);
+
+      uploadResults.push({ fileKey, fileType });
+    }
+
+    if (uploadResults.length === 0) {
+      return NextResponse.json(
+        { error: "No valid files were uploaded" },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({
+      message: "Upload successful",
+      files: uploadResults,
     });
-    await s3Client.send(s3Command);
-
-    // Save metadata to DynamoDB
-    const dynamoCommand = new PutItemCommand({
-      TableName: process.env.DYNAMODB_TABLE_NAME,
-      Item: {
-        fileKey: { S: fileKey },
-        fileType: { S: fileType },
-        uploadDate: { S: new Date().toISOString() },
-        uploadedBy: { S: username },
-      },
-    });
-    await docClient.send(dynamoCommand);
-
-    return NextResponse.json({ message: "Upload successful", fileKey });
   } catch (error) {
     console.error("Upload error:", error);
     return NextResponse.json(

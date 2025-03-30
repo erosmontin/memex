@@ -145,7 +145,7 @@ export default function GalleryPage() {
       >
         Back to Dashboard
       </button>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
         {media.length === 0 ? (
           <p className="text-center col-span-full">
             No media found. Upload some images or videos from the dashboard!
@@ -154,28 +154,27 @@ export default function GalleryPage() {
           media.map((item) => (
             <div
               key={item.fileKey}
-              className="bg-white p-4 rounded shadow-md cursor-pointer"
+              className="bg-white p-1 rounded shadow-md cursor-pointer"
               onClick={() => openModal(item)}
             >
               {item.fileType === "image" ? (
-                <Image
-                  src={item.url}
-                  alt={item.fileKey}
-                  width={300} // Adjust based on your design
-                  height={192} // Adjust based on your design (h-48 = 192px)
-                  className="w-full h-48 object-cover rounded"
-                />
+                <div className="relative w-full aspect-square">
+                  <Image
+                    src={item.url}
+                    alt={item.fileKey}
+                    fill
+                    className="object-cover rounded"
+                  />
+                </div>
               ) : (
-                <video
-                  src={item.url}
-                  className="w-full h-48 object-cover rounded"
-                  muted
-                />
+                <div className="relative w-full aspect-square">
+                  <video
+                    src={item.url}
+                    className="object-cover rounded h-full w-full"
+                    muted
+                  />
+                </div>
               )}
-              <p className="mt-2 text-sm text-gray-600">
-                {item.fileKey} <br />
-                Uploaded: {new Date(item.uploadDate).toLocaleString()}
-              </p>
             </div>
           ))
         )}
