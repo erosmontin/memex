@@ -3,15 +3,18 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
+import getConfig from "next/config";
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION });
-const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION });
+const { serverRuntimeConfig, publicRuntimeConfig } = getConfig();
+
+const s3Client = new S3Client({ region: process.env.AWS_REGION || publicRuntimeConfig.NEXT_PUBLIC_COGNITO_REGION });
+const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || publicRuntimeConfig.NEXT_PUBLIC_COGNITO_REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const verifier = CognitoJwtVerifier.create({
-  userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!,
+  userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || publicRuntimeConfig.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
   tokenUse: "id",
-  clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
+  clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || publicRuntimeConfig.NEXT_PUBLIC_COGNITO_CLIENT_ID,
 });
 
 export const config = { runtime: "nodejs" };
@@ -32,10 +35,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
+  const bucketName = process.env.S3_BUCKET_NAME || serverRuntimeConfig.S3_BUCKET_NAME;
+  const tableName = process.env.DYNAMODB_TABLE_NAME || serverRuntimeConfig.DYNAMODB_TABLE_NAME;
+
+  if (!bucketName || !tableName) {
+    console.error("Missing S3_BUCKET_NAME or DYNAMODB_TABLE_NAME");
+    return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+  }
+
   try {
     const formData = await request.formData();
-    // Retrieve all files with the key "files"
     const files = formData.getAll("files") as File[];
+
     if (files.length === 0) {
       return NextResponse.json(
         { error: "Please upload at least one image or video" },
@@ -43,31 +54,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Process each file individually
     const uploadResults = [];
     for (const file of files) {
-      if (
-        !file ||
-        (!file.type.startsWith("image/") && !file.type.startsWith("video/"))
-      ) {
-        continue; // Skip invalid file types
+      if (!file || (!file.type.startsWith("image/") && !file.type.startsWith("video/"))) {
+        continue;
       }
 
       const fileType = file.type.startsWith("image/") ? "image" : "video";
       const fileKey = `${fileType}s/${Date.now()}-${file.name}`;
 
-      // Upload to S3
       const s3Command = new PutObjectCommand({
-        Bucket: process.env.S3_BUCKET_NAME,
+        Bucket: bucketName,
         Key: fileKey,
         Body: Buffer.from(await file.arrayBuffer()),
         ContentType: file.type,
       });
       await s3Client.send(s3Command);
 
-      // Save metadata to DynamoDB with pinned default as false
       const dynamoCommand = new PutItemCommand({
-        TableName: process.env.DYNAMODB_TABLE_NAME,
+        TableName: tableName,
         Item: {
           fileKey: { S: fileKey },
           fileType: { S: fileType },

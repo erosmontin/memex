@@ -1,5 +1,6 @@
 export const config = { runtime: "nodejs" };
 
+import getConfig from "next/config";
 import { NextRequest, NextResponse } from "next/server";
 import {
   S3Client,
@@ -15,14 +16,25 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
-const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
+const { serverRuntimeConfig, publicRuntimeConfig } = getConfig();
+
+// Fallback to runtime config if process.env values are not set.
+const dynamoTableName = process.env.DYNAMODB_TABLE_NAME || serverRuntimeConfig.DYNAMODB_TABLE_NAME;
+const s3BucketName = process.env.S3_BUCKET_NAME || serverRuntimeConfig.S3_BUCKET_NAME;
+const region = process.env.AWS_REGION || publicRuntimeConfig.NEXT_PUBLIC_COGNITO_REGION;
+const userPoolId =
+  process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || publicRuntimeConfig.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
+const clientId =
+  process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || publicRuntimeConfig.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+
+const s3Client = new S3Client({ region });
+const dynamoClient = new DynamoDBClient({ region });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const verifier = CognitoJwtVerifier.create({
-  userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!,
+  userPoolId: userPoolId!,
   tokenUse: "id",
-  clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
+  clientId: clientId!,
 });
 
 export async function GET(request: NextRequest) {
@@ -47,12 +59,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    console.log('DYNAMODB_TABLE_NAME:', process.env.DYNAMODB_TABLE_NAME);
-    console.log('S3_BUCKET_NAME:', process.env.S3_BUCKET_NAME);
-  
+    console.log("DYNAMODB_TABLE_NAME:", dynamoTableName);
+    console.log("S3_BUCKET_NAME:", s3BucketName);
     console.log("Fetching media items from DynamoDB...");
     const scanCommand = new ScanCommand({
-      TableName: process.env.DYNAMODB_TABLE_NAME,
+      TableName: dynamoTableName,
       FilterExpression: "uploadedBy = :username",
       ExpressionAttributeValues: {
         ":username": { S: username },
@@ -62,12 +73,11 @@ export async function GET(request: NextRequest) {
     console.log("DynamoDB scan successful");
 
     const mediaItems = dynamoData.Items?.map((item) => {
-      // Explicitly determine the pinned status
+      // Determine the pinned status
       let isPinned = false;
       if (item.pinned && typeof item.pinned.BOOL !== "undefined") {
-        isPinned = item.pinned.BOOL; // Directly use the BOOL value if it exists
+        isPinned = item.pinned.BOOL;
       } else if (item.pinned && item.pinned.S) {
-        // Handle string values if they exist (e.g., "true" or "false")
         isPinned = item.pinned.S.toLowerCase() === "true";
       }
 
@@ -77,7 +87,7 @@ export async function GET(request: NextRequest) {
         uploadDate: item.uploadDate?.S || item.uploadDate,
         uploadedBy: item.uploadedBy?.S || item.uploadedBy,
         previewKey: item.previewKey?.S || item.previewKey,
-        pinned: isPinned, // Use the normalized boolean value
+        pinned: isPinned,
       };
     }) || [];
 
@@ -88,7 +98,7 @@ export async function GET(request: NextRequest) {
         const fileUrl = await getSignedUrl(
           s3Client,
           new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET_NAME,
+            Bucket: s3BucketName,
             Key: fileKey,
           }),
           { expiresIn: 6400 }
@@ -101,7 +111,7 @@ export async function GET(request: NextRequest) {
           previewUrl = await getSignedUrl(
             s3Client,
             new GetObjectCommand({
-              Bucket: process.env.S3_BUCKET_NAME,
+              Bucket: s3BucketName,
               Key: pKey,
             }),
             { expiresIn: 6400 }
@@ -129,14 +139,13 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const s3DeleteCommand = new DeleteObjectCommand({
-      Bucket: process.env.S3_BUCKET_NAME,
+      Bucket: s3BucketName,
       Key: fileKey,
     });
     await s3Client.send(s3DeleteCommand);
 
-    
     const dynamoDeleteCommand = new DeleteItemCommand({
-      TableName: process.env.DYNAMODB_TABLE_NAME,
+      TableName: dynamoTableName,
       Key: {
         fileKey: { S: fileKey },
       },

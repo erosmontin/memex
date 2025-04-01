@@ -53,7 +53,7 @@ export default function LoginPage() {
       onSuccess: (result) => {
         const token = result.getIdToken().getJwtToken();
         localStorage.setItem("token", token);
-        console.log("Token set in localStorage:", token);
+        // console.log("Token set in localStorage:", token);
         router.push("/dashboard");
       },
       onFailure: (err) => {
