@@ -13,6 +13,7 @@ type MediaItem = {
   uploadDate: string;
   pinned?: boolean | string;
   previewKey?: string;
+  previewUrl?: string;
 };
 
 export default function Dashboard() {
