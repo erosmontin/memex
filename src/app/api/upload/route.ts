@@ -4,6 +4,16 @@ import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 
+// Check that the required environment variables are defined
+if (
+  !process.env.MEX_AWS_REGION ||
+  !process.env.MEX_AWS_ACCESS_KEY_ID ||
+  !process.env.MEX_AWS_SECRET_ACCESS_KEY
+) {
+  throw new Error("Missing required MEX_AWS_ environment variables.");
+}
+
+
 const s3Client = new S3Client({ 
   region: process.env.MEX_AWS_REGION,
   credentials: {
