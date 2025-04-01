@@ -38,10 +38,10 @@ const verifier = CognitoJwtVerifier.create({
 });
 
 export async function GET(request: NextRequest) {
-  console.log("GET request received at /api/media");
+  // console.log("GET request received at /api/media");
   const authHeader = request.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  console.log("Token:", token ? "Present" : "Missing");
+  // console.log("Token:", token ? "Present" : "Missing");
   if (!token) {
     console.log("No token provided, returning 401");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -51,9 +51,9 @@ export async function GET(request: NextRequest) {
   try {
     // Include the clientId in the options to satisfy the type requirements.
     const payload = await verifier.verify(token, { clientId: clientId! });
-    console.log("Token payload:", payload);
+    // console.log("Token payload:", payload);
     username = payload.sub;
-    console.log("Verified username:", username);
+    // console.log("Verified username:", username);
   } catch (error) {
     console.error("Token verification failed:", error);
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
