@@ -405,12 +405,14 @@ export default function Dashboard() {
             </div>
             {selectedMedia.fileType.startsWith("image") ? (
               <Image
-                src={selectedMedia.url}
+                src={selectedMedia.previewKey ? selectedMedia.previewKey : selectedMedia.url}
                 alt={selectedMedia.fileKey}
                 width={800}
                 height={600}
+                fill
                 className="w-full h-auto max-h-[80vh] object-contain"
-              />
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                />
             ) : selectedMedia.fileType.startsWith("video") ? (
               <video
                 src={selectedMedia.url}
