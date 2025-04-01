@@ -26,7 +26,9 @@ export default function GalleryPage() {
   const [isFetching, setIsFetching] = useState(false);
   const router = useRouter();
   const modalRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const observer = useRef<IntersectionObserver | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const sentinelRef = useRef<HTMLDivElement>(null);
   const LIMIT = 12;
 

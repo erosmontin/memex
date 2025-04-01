@@ -29,18 +29,59 @@ export default function Dashboard() {
   const [userName, setUserName] = useState<string>("");
   const modalRef = useRef<HTMLDivElement>(null);
 
+  const fetchPinnedImages = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/");
+      return;
+    }
+    setPinnedLoading(true);
+    try {
+      const res = await fetch("/api/media?pinned=true", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        // If the token expired or is invalid, clear it and redirect to login.
+        localStorage.removeItem("token");
+        router.push("/");
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to fetch pinned images");
+      }
+
+      const data: MediaItem[] = await res.json();
+      console.log("Raw API response:", data);
+
+      const pinnedList = data.filter((item) => {
+        const isPinned =
+          item.pinned === true ||
+          (typeof item.pinned === "string" && item.pinned.toLowerCase() === "true");
+        return isPinned;
+      });
+      setPinnedImages(pinnedList);
+      console.log("Pinned images set:", pinnedList);
+    } catch (err) {
+      console.error("Fetch pinned images error:", err);
+      toast.error((err as Error).message || "Failed to load pinned images");
+    } finally {
+      setPinnedLoading(false);
+    }
+  }, [router]);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       router.push("/");
     } else {
-      // Retrieve user's name from localStorage (or decode your token)
-      
-      
       const name = localStorage.getItem("email") || "User";
       setUserName(name);
     }
-  }, [router]);
+    fetchPinnedImages();
+  }, [router, fetchPinnedImages]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -94,53 +135,6 @@ export default function Dashboard() {
       toast.error((err as Error).message || "Upload failed");
     } finally {
       setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPinnedImages();
-  }, []);
-
-  const fetchPinnedImages = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/");
-      return;
-    }
-    setPinnedLoading(true);
-    try {
-      const res = await fetch("/api/media?pinned=true", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.status === 401) {
-        // If the token expired or is invalid, clear it and redirect to login.
-        localStorage.removeItem("token");
-        router.push("/");
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to fetch pinned images");
-      }
-
-      const data: MediaItem[] = await res.json();
-      console.log("Raw API response:", data);
-
-      const pinnedList = data.filter((item) => {
-        const isPinned =
-          item.pinned === true ||
-          (typeof item.pinned === "string" && item.pinned.toLowerCase() === "true");
-        return isPinned;
-      });
-      setPinnedImages(pinnedList);
-      console.log("Pinned images set:", pinnedList);
-    } catch (err) {
-      console.error("Fetch pinned images error:", err);
-      toast.error((err as Error).message || "Failed to load pinned images");
-    } finally {
-      setPinnedLoading(false);
     }
   };
 
