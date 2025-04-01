@@ -4,8 +4,8 @@ import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
-const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
+const s3Client = new S3Client({ region: process.env.AWS_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION });
+const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const verifier = CognitoJwtVerifier.create({

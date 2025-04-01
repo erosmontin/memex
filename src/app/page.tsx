@@ -9,16 +9,6 @@ import {
 import { useRouter } from "next/navigation";
 
 
-// Debug: Print selected environment variables (omit secrets in production!)
-console.log("Environment variables:");
-console.log("AWS_REGION:", process.env.AWS_REGION);
-console.log("NEXT_PUBLIC_COGNITO_USER_POOL_ID:", process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID);
-console.log("NEXT_PUBLIC_COGNITO_CLIENT_ID:", process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID);
-console.log("S3_BUCKET_NAME:", process.env.S3_BUCKET_NAME);
-console.log("DYNAMODB_TABLE_NAME:", process.env.DYNAMODB_TABLE_NAME);
-console.log("NEXT_PUBLIC_COGNITO_REGION:", process.env.NEXT_PUBLIC_COGNITO_REGION);
-console.log("AWS_SECRET_ACCESS_KEY:", process.env.AWS_SECRET_ACCESS_KEY);
-
 
 export default function LoginPage() {
   const router = useRouter();
