@@ -420,9 +420,10 @@ export default function GalleryPage() {
               <Image
                 src={selectedMedia.url}
                 alt={selectedMedia.fileKey}
-                fill
+                layout="responsive"
+                width={16}
+                height={9}
                 className="object-cover rounded"
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               />
             ) : (
               <video
