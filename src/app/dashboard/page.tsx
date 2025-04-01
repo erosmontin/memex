@@ -251,6 +251,48 @@ export default function Dashboard() {
     }
   };
 
+  async function uploadFile(file: File) {
+    // 1. Request a pre-signed URL from our API.
+    const res = await fetch(
+      `/api/upload/presign?fileName=${encodeURIComponent(file.name)}&fileType=${file.type}`
+    );
+    if (!res.ok) {
+      throw new Error("Failed to get presigned URL");
+    }
+    const { signedUrl, fileKey } = await res.json();
+
+    // 2. Upload file directly to S3 using the pre-signed URL.
+    const uploadRes = await fetch(signedUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": file.type,
+      },
+      body: file,
+    });
+    if (!uploadRes.ok) {
+      throw new Error("S3 upload failed");
+    }
+
+    // 3. Optionally, call another API route to register metadata:
+    const metadataRes = await fetch("/api/upload/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+      body: JSON.stringify({
+        fileKey,
+        fileType: file.type.startsWith("image/") ? "image" : "video",
+        // additional metadata here
+      }),
+    });
+    if (!metadataRes.ok) {
+      throw new Error("Failed to register file metadata");
+    }
+
+    console.log("Upload successful:", fileKey);
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 space-y-8">
       <ToastContainer />
