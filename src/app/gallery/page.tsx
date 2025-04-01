@@ -86,31 +86,6 @@ export default function GalleryPage() {
     fetchMedia();
   }, [fetchMedia]);
 
-  // Set up infinite scroll using IntersectionObserver
-  useEffect(() => {
-    if (isFetching) return;
-    if (!hasMore) return;
-    if (observer.current) observer.current.disconnect();
-    observer.current = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setPage((prevPage) => prevPage + 1);
-        }
-      },
-      {
-        root: null,
-        rootMargin: "20px",
-        threshold: 1.0,
-      }
-    );
-    if (sentinelRef.current) {
-      observer.current.observe(sentinelRef.current);
-    }
-    return () => {
-      if (observer.current) observer.current.disconnect();
-    };
-  }, [isFetching, hasMore]);
-
   const openModal = (item: MediaItem) => {
     setSelectedMedia(item);
   };
@@ -329,11 +304,20 @@ export default function GalleryPage() {
           ))
         )}
       </div>
-      {/* Sentinel element for infinite scroll */}
-      <div ref={sentinelRef} className="h-4" />
+      {/* Load More Button */}
+      {hasMore && !isFetching && (
+        <button
+          onClick={() => setPage((prev) => prev + 1)}
+          className="mt-4 bg-green-500 text-white p-2 rounded hover:bg-green-600 block mx-auto"
+        >
+          Load More
+        </button>
+      )}
+      {/* Sentinel element can be removed or commented out if not used */}
+      {/* <div ref={sentinelRef} className="h-4" /> */}
 
-          {/* Modal for viewing full media */}
-          {selectedMedia && (
+      {/* Modal for viewing full media */}
+      {selectedMedia && (
         <div
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
           onClick={(e) => {
