@@ -2,8 +2,8 @@ const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/clien
 const { DynamoDBClient, UpdateItemCommand } = require("@aws-sdk/client-dynamodb");
 const sharp = require("sharp");
 
-const s3 = new S3Client({ region: process.env.AWS_REGION });
-const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
+const s3 = new S3Client({ region: process.env.REGION });
+const dynamoClient = new DynamoDBClient({ region: process.env.REGION });
 const bucket = process.env.S3_BUCKET_NAME;
 const previewFolder = process.env.PREVIEW_FOLDER || "previews";
 const tableName = process.env.DYNAMODB_TABLE_NAME;
