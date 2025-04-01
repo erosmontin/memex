@@ -73,14 +73,32 @@ export async function GET(request: NextRequest) {
     // Generate presigned URLs for each media item.
     const mediaWithUrls = await Promise.all(
       mediaItems.map(async (item) => {
-        // Explicitly convert fileKey to string.
+        // Convert fileKey explicitly to string.
         const fileKey: string = typeof item.fileKey === "string" ? item.fileKey : (item.fileKey?.S as string);
-        const getObjectCommand = new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET_NAME,
-          Key: fileKey,
-        });
-        const url = await getSignedUrl(s3Client, getObjectCommand, { expiresIn: 6400 }); // URL valid for 24 hours.
-        return { ...item, url };
+        const fileUrl = await getSignedUrl(
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET_NAME,
+            Key: fileKey,
+          }),
+          { expiresIn: 6400 }
+        );
+
+        // Generate a signed URL for the preview if available.
+        let previewUrl = "";
+        if (item.previewKey) {
+          const pKey: string =
+            typeof item.previewKey === "string" ? item.previewKey : (item.previewKey?.S as string);
+          previewUrl = await getSignedUrl(
+            s3Client,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET_NAME,
+              Key: pKey,
+            }),
+            { expiresIn: 6400 }
+          );
+        }
+        return { ...item, url: fileUrl, previewUrl: previewUrl || fileUrl };
       })
     );
 

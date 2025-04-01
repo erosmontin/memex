@@ -95,16 +95,28 @@ export default function Dashboard() {
 
   const fetchPinnedImages = async () => {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) {
+      router.push("/");
+      return;
+    }
     setPinnedLoading(true);
     try {
       const res = await fetch("/api/media?pinned=true", {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (res.status === 401) {
+        // If the token expired or is invalid, clear it and redirect to login.
+        localStorage.removeItem("token");
+        router.push("/");
+        return;
+      }
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to fetch pinned images");
       }
+
       const data: MediaItem[] = await res.json();
       console.log("Raw API response:", data);
 
@@ -309,7 +321,7 @@ export default function Dashboard() {
         ) : pinnedImages.length === 0 ? (
           <p className="text-center">No pinned images found.</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+          <div className="max-w-screen-xl mx-auto grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
             {pinnedImages.map((img) => (
               <div
                 key={img.fileKey}
@@ -317,7 +329,7 @@ export default function Dashboard() {
                 onClick={() => setSelectedMedia(img)}
               >
                 <Image
-                  src={img.url}
+                  src={img.previewUrl || img.url} // use the signed URL if available
                   alt={img.fileKey}
                   fill
                   className="object-cover rounded"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CognitoUserPool,
   CognitoUser,
@@ -9,6 +9,16 @@ import {
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
+  
+  // If token is stored, redirect to dashboard.
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      router.push("/dashboard");
+    }
+  }, [router]);
+  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -21,8 +31,6 @@ export default function LoginPage() {
   const [forgotCodeSent, setForgotCodeSent] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [resetNewPassword, setResetNewPassword] = useState("");
-
-  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

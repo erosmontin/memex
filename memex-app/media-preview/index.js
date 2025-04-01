@@ -45,7 +45,7 @@ exports.handler = async (event) => {
       console.log(`Buffer created: ${fileKey}`);
       // Generate preview
       const previewBuffer = await sharp(buffer)
-        .resize({ width: 200 })
+        .resize({ width: 50 })
         .jpeg()
         .toBuffer();
 

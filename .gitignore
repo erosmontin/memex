@@ -41,3 +41,4 @@ yarn-error.log*
 next-env.d.ts
 memex-app/.aws-sam/
 memex-app/.aws-sam/build/
+memex-app/fix_previews.py

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import Image from "next/image"; // Import the Image component
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -12,7 +12,8 @@ type MediaItem = {
   uploadDate: string;
   uploadedBy: string;
   url: string;
-  pinned?: boolean; // Add pinned property to MediaItem type
+  pinned?: boolean;
+  previewUrl?: string;
 };
 
 export default function GalleryPage() {
@@ -24,13 +25,12 @@ export default function GalleryPage() {
   const [hasMore, setHasMore] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const router = useRouter();
-  const modalRef = useRef<HTMLDivElement>(null); // For focus trapping in the modal
+  const modalRef = useRef<HTMLDivElement>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const LIMIT = 12; // Number of items to fetch per page
+  const LIMIT = 12;
 
-  // Fetch media from API with pagination.
-  // If you want to fetch only pinned media, you can add "&pinned=true" to the URL.
+  // Fetch media with pagination
   const fetchMedia = useCallback(async () => {
     setIsFetching(true);
     const token = localStorage.getItem("token");
@@ -57,16 +57,12 @@ export default function GalleryPage() {
       }
       const data: MediaItem[] = await response.json();
 
-      // If API returns all items every time instead of paginated,
-      // filter out duplicates based on fileKey.
       setMedia((prev) => {
         const combined = page === 1 ? data : [...prev, ...data];
-        // Remove duplicate items based on fileKey
         const unique = combined.filter(
           (item, index, self) =>
             index === self.findIndex((t) => t.fileKey === item.fileKey)
         );
-        // Sort items by uploadDate descending (most recent first)
         unique.sort(
           (a, b) =>
             new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime()
@@ -86,12 +82,11 @@ export default function GalleryPage() {
     }
   }, [page, router]);
 
-  // Initial fetch and subsequent page fetches
   useEffect(() => {
     fetchMedia();
   }, [fetchMedia]);
 
-  // Set up IntersectionObserver on the sentinel
+  // Set up infinite scroll using IntersectionObserver
   useEffect(() => {
     if (isFetching) return;
     if (!hasMore) return;
@@ -128,12 +123,15 @@ export default function GalleryPage() {
     if (!selectedMedia) return;
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`/api/media?fileKey=${selectedMedia.fileKey}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(
+        `/api/media?fileKey=${selectedMedia.fileKey}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Failed to delete media");
@@ -155,7 +153,8 @@ export default function GalleryPage() {
         "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
       );
       const firstElement = focusableElements[0] as HTMLElement;
-      const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+      const lastElement =
+        focusableElements[focusableElements.length - 1] as HTMLElement;
 
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
@@ -190,7 +189,6 @@ export default function GalleryPage() {
     const currentIndex = media.findIndex(
       (item) => item.fileKey === selectedMedia.fileKey
     );
-    // Move to the next item; wraps around to the start if at the end
     const nextIndex = (currentIndex + 1) % media.length;
     setSelectedMedia(media[nextIndex]);
   };
@@ -200,33 +198,35 @@ export default function GalleryPage() {
     const currentIndex = media.findIndex(
       (item) => item.fileKey === selectedMedia.fileKey
     );
-    // Move to the previous item; wraps around to the end if at the beginning
     const prevIndex = (currentIndex - 1 + media.length) % media.length;
     setSelectedMedia(media[prevIndex]);
   };
 
-  // Handler for pinning a media item
   const handlePin = async () => {
     if (!selectedMedia) return;
     const token = localStorage.getItem("token");
     if (!token) return;
-  
+
     try {
-      const response = await fetch(`/api/media/pin?fileKey=${selectedMedia.fileKey}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(
+        `/api/media/pin?fileKey=${selectedMedia.fileKey}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Failed to pin image");
       }
-      // Update the selectedMedia state and media list to reflect the new pinned status.
       setSelectedMedia({ ...selectedMedia, pinned: true });
       setMedia((prev) =>
         prev.map((item) =>
-          item.fileKey === selectedMedia.fileKey ? { ...item, pinned: true } : item
+          item.fileKey === selectedMedia.fileKey
+            ? { ...item, pinned: true }
+            : item
         )
       );
       toast.success("Image pinned successfully");
@@ -236,7 +236,6 @@ export default function GalleryPage() {
     }
   };
 
-  // New handler for unpinning a media item
   const handleUnpin = async (fileKey: string) => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -251,7 +250,6 @@ export default function GalleryPage() {
         const data = await response.json();
         throw new Error(data.error || "Failed to unpin image");
       }
-      // Update state to mark the media as unpinned.
       setMedia((prev) =>
         prev.map((item) =>
           item.fileKey === fileKey ? { ...item, pinned: false } : item
@@ -267,9 +265,6 @@ export default function GalleryPage() {
     }
   };
 
-  // If you want the gallery to show only pinned media, uncomment the following line:
-  // const displayedMedia = media.filter((item) => item.pinned);
-  // Otherwise, use all media:
   const displayedMedia = media;
 
   if (loading && page === 1) {
@@ -300,7 +295,7 @@ export default function GalleryPage() {
       >
         Back to Dashboard
       </button>
-      <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-2">
+      <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-14 gap-2">
         {displayedMedia.length === 0 ? (
           <p className="text-center col-span-full">
             No media found. Upload some images or videos from the dashboard!
@@ -315,8 +310,7 @@ export default function GalleryPage() {
               {item.fileType.startsWith("image") ? (
                 <div className="relative w-full aspect-square">
                   <Image
-                    // Use previewKey if available, otherwise fallback to the original URL.
-                    src={item.url}
+                    src={item.previewUrl || item.url}
                     alt={item.fileKey}
                     fill
                     className="object-cover rounded"
@@ -338,8 +332,8 @@ export default function GalleryPage() {
       {/* Sentinel element for infinite scroll */}
       <div ref={sentinelRef} className="h-4" />
 
-      {/* Modal for viewing full media */}
-      {selectedMedia && (
+          {/* Modal for viewing full media */}
+          {selectedMedia && (
         <div
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
           onClick={(e) => {
@@ -350,10 +344,10 @@ export default function GalleryPage() {
         >
           <div
             ref={modalRef}
-            className="relative bg-white p-4 rounded max-w-3xl w-full"
+            className="relative bg-white p-4 rounded w-full max-w-[90vw] max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Navigation Buttons for Previous and Next */}
+            {/* Navigation Buttons */}
             <div
               className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50"
               onClick={(e) => {
@@ -362,7 +356,7 @@ export default function GalleryPage() {
               }}
             >
               <button className="bg-gray-700 text-white p-2 rounded-full">
-                &#8249;
+                ‹
               </button>
             </div>
             <div
@@ -373,11 +367,11 @@ export default function GalleryPage() {
               }}
             >
               <button className="bg-gray-700 text-white p-2 rounded-full">
-                &#8250;
+                ›
               </button>
             </div>
 
-            {/* New Pin/Unpin, Delete and Close Buttons */}
+            {/* Pin/Unpin, Delete and Close Buttons */}
             <div className="absolute top-2 right-2 flex space-x-2 z-50">
               <button
                 onClick={handleDelete}
@@ -385,7 +379,6 @@ export default function GalleryPage() {
               >
                 Delete
               </button>
-              {/* Conditionally render Pin/Unpin button */}
               {selectedMedia.pinned ? (
                 <button
                   onClick={(e) => {
@@ -417,24 +410,36 @@ export default function GalleryPage() {
 
             {/* Media Display */}
             {selectedMedia.fileType.startsWith("image") ? (
-              <Image
-                src={selectedMedia.url}
-                alt={selectedMedia.fileKey}
-                layout="responsive"
-                width={16}
-                height={9}
-                className="object-cover rounded"
-              />
+              <div className="flex items-center justify-center w-full">
+                <Image
+                  src={selectedMedia.url}
+                  alt={selectedMedia.fileKey}
+                  width={800} // Provide a base width for aspect ratio
+                  height={800} // Provide a base height for aspect ratio
+                  className="object-contain rounded max-h-[70vh] max-w-full"
+                  sizes="(max-width: 768px) 100vw, 80vw"
+                />
+              </div>
             ) : (
               <video
                 src={selectedMedia.url}
                 controls
-                className="w-full h-auto max-h-[80vh] object-contain"
+                className="w-full h-auto max-h-[70vh] object-contain rounded"
               />
             )}
 
             {/* Social Share Buttons */}
             <div className="flex space-x-2 mt-4 justify-center">
+              <a
+                href={selectedMedia.url}
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <button className="bg-purple-600 text-white p-2 rounded hover:bg-purple-700">
+                  Download
+                </button>
+              </a>
               <a
                 href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
                   "Check out this media: " + selectedMedia.url

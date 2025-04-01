@@ -5,11 +5,7 @@ export const config = { runtime: "nodejs" };
 
 const region = process.env.MY_AWS_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION;
 const dynamoClient = new DynamoDBClient({ 
-  region, 
-  credentials: {
-    accessKeyId: process.env.MY_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.MY_AWS_SECRET_ACCESS_KEY!,
-  },
+  region
 });
 
 export async function POST(request: NextRequest) {
