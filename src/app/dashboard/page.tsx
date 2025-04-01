@@ -19,7 +19,6 @@ type MediaItem = {
 export default function Dashboard() {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const router = useRouter();
 
@@ -97,69 +96,70 @@ export default function Dashboard() {
     }
   };
 
+  // New uploadFile function using pre-signed URLs
+  async function uploadFile(file: File) {
+    // 1. Request a pre-signed URL from our API.
+    const res = await fetch(
+      `/api/upload/presign?fileName=${encodeURIComponent(file.name)}&fileType=${file.type}`
+    );
+    if (!res.ok) {
+      throw new Error("Failed to get presigned URL");
+    }
+    const { signedUrl, fileKey } = await res.json();
+
+    // 2. Upload file directly to S3 using the pre-signed URL.
+    const uploadRes = await fetch(signedUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": file.type,
+      },
+      body: file,
+    });
+    if (!uploadRes.ok) {
+      throw new Error("S3 upload failed");
+    }
+
+    // 3. Register metadata by calling another API route
+    const metadataRes = await fetch("/api/upload/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+      body: JSON.stringify({
+        fileKey,
+        fileType: file.type.startsWith("image/") ? "image" : "video",
+      }),
+    });
+    if (!metadataRes.ok) {
+      throw new Error("Failed to register file metadata");
+    }
+    return fileKey;
+  }
+
+  // Updated handleUpload to use uploadFile
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (files.length === 0) {
       setError("Please select at least one file");
       return;
     }
-
     setLoading(true);
-    const token = localStorage.getItem("token");
-    const formData = new FormData();
-    files.forEach((file) => formData.append("files", file));
-
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Upload failed");
+      const uploadedKeys: string[] = [];
+      // Process each file sequentially (or use Promise.all for parallel uploads)
+      for (const file of files) {
+        const key = await uploadFile(file);
+        uploadedKeys.push(key);
       }
-
-      const data = await response.json();
-      setMessage(data.message);
+      toast.success(`Upload successful: ${uploadedKeys.join(", ")}`);
       setFiles([]);
-      const fileList =
-        data.files && data.files.length > 0
-          ? data.files.map((f: { fileKey: string }) => f.fileKey).join(", ")
-          : "No files received";
-      toast.success(`Upload successful: ${fileList}`);
-      await refreshPinnedImages();
+      await fetchPinnedImages();
     } catch (err) {
       setError((err as Error).message || "Upload failed");
       toast.error((err as Error).message || "Upload failed");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const refreshPinnedImages = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    try {
-      const res = await fetch("/api/media?pinned=true", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to fetch pinned images");
-      }
-      const data: MediaItem[] = await res.json();
-      const pinnedList = data.filter((item) => {
-        const isPinned =
-          item.pinned === true ||
-          (typeof item.pinned === "string" && item.pinned.toLowerCase() === "true");
-        return isPinned;
-      });
-      setPinnedImages(pinnedList);
-    } catch (err) {
-      console.error("Refresh pinned images error:", err);
-      toast.error((err as Error).message || "Failed to load pinned images");
     }
   };
 
@@ -177,7 +177,7 @@ export default function Dashboard() {
       }
       setPinnedImages((prev) => prev.filter((img) => img.fileKey !== fileKey));
       toast.success("Image unpinned successfully");
-      await refreshPinnedImages();
+      await fetchPinnedImages();
     } catch (err) {
       console.error(err);
       toast.error((err as Error).message || "Failed to unpin image");
@@ -215,10 +215,12 @@ export default function Dashboard() {
         const data = await response.json();
         throw new Error(data.error || "Failed to delete media");
       }
-      setPinnedImages((prev) => prev.filter((img) => img.fileKey !== selectedMedia.fileKey));
+      setPinnedImages((prev) =>
+        prev.filter((img) => img.fileKey !== selectedMedia.fileKey)
+      );
       toast.success("Media deleted successfully");
       setSelectedMedia(null);
-      await refreshPinnedImages();
+      await fetchPinnedImages();
     } catch (err) {
       console.error(err);
       toast.error((err as Error).message || "Failed to delete media");
@@ -244,54 +246,12 @@ export default function Dashboard() {
         )
       );
       toast.success("Media pinned successfully");
-      await refreshPinnedImages();
+      await fetchPinnedImages();
     } catch (err) {
       console.error(err);
       toast.error((err as Error).message || "Failed to pin media");
     }
   };
-
-  async function uploadFile(file: File) {
-    // 1. Request a pre-signed URL from our API.
-    const res = await fetch(
-      `/api/upload/presign?fileName=${encodeURIComponent(file.name)}&fileType=${file.type}`
-    );
-    if (!res.ok) {
-      throw new Error("Failed to get presigned URL");
-    }
-    const { signedUrl, fileKey } = await res.json();
-
-    // 2. Upload file directly to S3 using the pre-signed URL.
-    const uploadRes = await fetch(signedUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": file.type,
-      },
-      body: file,
-    });
-    if (!uploadRes.ok) {
-      throw new Error("S3 upload failed");
-    }
-
-    // 3. Optionally, call another API route to register metadata:
-    const metadataRes = await fetch("/api/upload/register", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      body: JSON.stringify({
-        fileKey,
-        fileType: file.type.startsWith("image/") ? "image" : "video",
-        // additional metadata here
-      }),
-    });
-    if (!metadataRes.ok) {
-      throw new Error("Failed to register file metadata");
-    }
-
-    console.log("Upload successful:", fileKey);
-  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 space-y-8">
@@ -326,7 +286,6 @@ export default function Dashboard() {
           />
         </div>
         {error && <p className="text-red-500 mb-4">{error}</p>}
-        {message && <p className="text-green-500 mb-4">{message}</p>}
         <button
           type="submit"
           disabled={loading}

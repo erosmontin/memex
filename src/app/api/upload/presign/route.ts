@@ -22,9 +22,16 @@ export async function GET(request: NextRequest) {
   if (!fileName || !fileType) {
     return NextResponse.json({ error: "Missing fileName or fileType" }, { status: 400 });
   }
+  
+  console.log("Generating presigned URL for:", fileName);
+  console.log("File type:", fileType);
 
+  let dir = "images";
+    if (fileType.startsWith('vide')) {
+        dir = "videos"
+    }
   // Construct a fileKey (you could add more logic here)
-  const fileKey = `uploads/${Date.now()}-${fileName}`;
+  const fileKey = `${dir}/${Date.now()}-${fileName}`;
 
   const command = new PutObjectCommand({
     Bucket: s3BucketName,
