@@ -10,6 +10,9 @@ const dynamoClient = new DynamoDBClient({
 
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  console.log('DYNAMODB_TABLE_NAME:', process.env.DYNAMODB_TABLE_NAME);
+  console.log('S3_BUCKET_NAME:', process.env.S3_BUCKET_NAME);
+
   const fileKey = searchParams.get("fileKey");
 
   if (!fileKey) {

@@ -47,6 +47,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    console.log('DYNAMODB_TABLE_NAME:', process.env.DYNAMODB_TABLE_NAME);
+    console.log('S3_BUCKET_NAME:', process.env.S3_BUCKET_NAME);
+  
     console.log("Fetching media items from DynamoDB...");
     const scanCommand = new ScanCommand({
       TableName: process.env.DYNAMODB_TABLE_NAME,
@@ -131,6 +134,7 @@ export async function DELETE(request: NextRequest) {
     });
     await s3Client.send(s3DeleteCommand);
 
+    
     const dynamoDeleteCommand = new DeleteItemCommand({
       TableName: process.env.DYNAMODB_TABLE_NAME,
       Key: {
