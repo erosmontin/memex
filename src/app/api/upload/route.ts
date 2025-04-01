@@ -29,8 +29,14 @@ const verifier = CognitoJwtVerifier.create({
   clientId: clientId!,
 });
 
-export const config = { runtime: "nodejs" };
-
+export const config = {
+  runtime: "nodejs", // or "experimental-edge", if you're using edge runtime
+  api: {
+    bodyParser: {
+      sizeLimit: '200mb', // Increase the limit to 200 MB
+    },
+  },
+};
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
