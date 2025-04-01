@@ -49,7 +49,8 @@ export async function GET(request: NextRequest) {
 
   let username: string;
   try {
-    const payload = await verifier.verify(token);
+    // Include the clientId in the options to satisfy the type requirements.
+    const payload = await verifier.verify(token, { clientId: clientId! });
     console.log("Token payload:", payload);
     username = payload.sub;
     console.log("Verified username:", username);
