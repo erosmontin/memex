@@ -15,8 +15,22 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
-const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
+// Use the new MEX_AWS_* variables instead of AWS_*
+const s3Client = new S3Client({ 
+  region: process.env.MEX_AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.MEX_AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.MEX_AWS_SECRET_ACCESS_KEY!,
+  },
+});
+
+const dynamoClient = new DynamoDBClient({ 
+  region: process.env.MEX_AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.MEX_AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.MEX_AWS_SECRET_ACCESS_KEY!,
+  },
+});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const verifier = CognitoJwtVerifier.create({
@@ -59,12 +73,10 @@ export async function GET(request: NextRequest) {
     console.log("DynamoDB scan successful");
 
     const mediaItems = dynamoData.Items?.map((item) => {
-      // Explicitly determine the pinned status
       let isPinned = false;
       if (item.pinned && typeof item.pinned.BOOL !== "undefined") {
-        isPinned = item.pinned.BOOL; // Directly use the BOOL value if it exists
+        isPinned = item.pinned.BOOL;
       } else if (item.pinned && item.pinned.S) {
-        // Handle string values if they exist (e.g., "true" or "false")
         isPinned = item.pinned.S.toLowerCase() === "true";
       }
 
@@ -74,7 +86,7 @@ export async function GET(request: NextRequest) {
         uploadDate: item.uploadDate?.S || item.uploadDate,
         uploadedBy: item.uploadedBy?.S || item.uploadedBy,
         previewKey: item.previewKey?.S || item.previewKey,
-        pinned: isPinned, // Use the normalized boolean value
+        pinned: isPinned,
       };
     }) || [];
 
