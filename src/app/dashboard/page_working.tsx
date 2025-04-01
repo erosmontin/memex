@@ -11,32 +11,27 @@ type MediaItem = {
   fileType: string;
   url: string;
   uploadDate: string;
-  pinned?: boolean | string;
-  previewKey?: string;
+  pinned?: boolean;
 };
 
 export default function Dashboard() {
+  // States for upload
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const router = useRouter();
 
-  const [pinnedImages, setPinnedImages] = useState<MediaItem[]>([]);
-  const [pinnedLoading, setPinnedLoading] = useState<boolean>(true);
-  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
-      router.push("/");
+      router.push("/"); // Redirect to login if no token
     }
   }, [router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files).filter((file) =>
+      const selectedFiles = Array.from(e.target.files).filter(file =>
         file.type.startsWith("image/") || file.type.startsWith("video/")
       );
       if (selectedFiles.length > 0) {
@@ -54,16 +49,18 @@ export default function Dashboard() {
       setError("Please select at least one file");
       return;
     }
-
+    
     setLoading(true);
     const token = localStorage.getItem("token");
     const formData = new FormData();
-    files.forEach((file) => formData.append("files", file));
+    files.forEach(file => formData.append("files", file));
 
     try {
       const response = await fetch("/api/upload", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
         body: formData,
       });
 
@@ -74,13 +71,13 @@ export default function Dashboard() {
 
       const data = await response.json();
       setMessage(data.message);
-      setFiles([]);
+      setFiles([]); // Clear files after upload
+
       const fileList =
         data.files && data.files.length > 0
           ? data.files.map((f: { fileKey: string }) => f.fileKey).join(", ")
           : "No files received";
       toast.success(`Upload successful: ${fileList}`);
-      await refreshPinnedImages();
     } catch (err) {
       setError((err as Error).message || "Upload failed");
       toast.error((err as Error).message || "Upload failed");
@@ -89,40 +86,46 @@ export default function Dashboard() {
     }
   };
 
+  // State for pinned images
+  const [pinnedImages, setPinnedImages] = useState<MediaItem[]>([]);
+  const [pinnedLoading, setPinnedLoading] = useState<boolean>(true);
+
+  // State for selected image (gallery modal)
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Fetch pinned images from the API endpoint
   useEffect(() => {
+    async function fetchPinnedImages() {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      try {
+        const res = await fetch("/api/media?pinned=true", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to fetch pinned images");
+        }
+        const data: MediaItem[] = await res.json();
+        console.log("API response for pinned images:", data);
+
+        const pinnedList = data.filter((item) => {
+          if (typeof item.pinned === "boolean") return item.pinned === true;
+          if (typeof item.pinned === "string") return item.pinned.toLowerCase() === "true";
+          return false;
+        });
+        console.log("Filtered pinned images:", pinnedList);
+        setPinnedImages(pinnedList);
+      } catch (err) {
+        console.error("Fetch pinned images error:", err);
+        toast.error((err as Error).message || "Failed to load pinned images");
+      } finally {
+        setPinnedLoading(false);
+      }
+    }
     fetchPinnedImages();
   }, []);
-
-  const fetchPinnedImages = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    setPinnedLoading(true);
-    try {
-      const res = await fetch("/api/media?pinned=true", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to fetch pinned images");
-      }
-      const data: MediaItem[] = await res.json();
-      console.log("Raw API response:", data);
-
-      const pinnedList = data.filter((item) => {
-        const isPinned =
-          item.pinned === true ||
-          (typeof item.pinned === "string" && item.pinned.toLowerCase() === "true");
-        return isPinned;
-      });
-      setPinnedImages(pinnedList);
-      console.log("Pinned images set:", pinnedList);
-    } catch (err) {
-      console.error("Fetch pinned images error:", err);
-      toast.error((err as Error).message || "Failed to load pinned images");
-    } finally {
-      setPinnedLoading(false);
-    }
-  };
 
   const refreshPinnedImages = async () => {
     const token = localStorage.getItem("token");
@@ -136,26 +139,30 @@ export default function Dashboard() {
         throw new Error(data.error || "Failed to fetch pinned images");
       }
       const data: MediaItem[] = await res.json();
-      const pinnedList = data.filter((item) => {
-        const isPinned =
-          item.pinned === true ||
-          (typeof item.pinned === "string" && item.pinned.toLowerCase() === "true");
-        return isPinned;
-      });
+      // Filter such that an empty (undefined) pinned value is treated as false.
+      const pinnedList = data.filter((item) =>
+        item.pinned?.toString().toLowerCase() === "true"
+      );
       setPinnedImages(pinnedList);
     } catch (err) {
-      console.error("Refresh pinned images error:", err);
+      console.error("Fetch pinned images error:", err);
       toast.error((err as Error).message || "Failed to load pinned images");
+    } finally {
+      setPinnedLoading(false);
     }
   };
 
+  // Function to unpin an image
   const handleUnpin = async (fileKey: string) => {
     const token = localStorage.getItem("token");
     if (!token) return;
+
     try {
       const response = await fetch(`/api/media/unpin?fileKey=${fileKey}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        method: "POST", // or PATCH depending on your implementation
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
       if (!response.ok) {
         const data = await response.json();
@@ -163,13 +170,13 @@ export default function Dashboard() {
       }
       setPinnedImages((prev) => prev.filter((img) => img.fileKey !== fileKey));
       toast.success("Image unpinned successfully");
-      await refreshPinnedImages();
     } catch (err) {
       console.error(err);
       toast.error((err as Error).message || "Failed to unpin image");
     }
   };
 
+  // Navigation functions inside modal for gallery-like experience
   const handleNext = useCallback(() => {
     if (!selectedMedia) return;
     const currentIndex = pinnedImages.findIndex(
@@ -192,10 +199,13 @@ export default function Dashboard() {
     if (!selectedMedia) return;
     const token = localStorage.getItem("token");
     if (!token) return;
+
     try {
       const response = await fetch(`/api/media/delete?fileKey=${selectedMedia.fileKey}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
       if (!response.ok) {
         const data = await response.json();
@@ -204,7 +214,6 @@ export default function Dashboard() {
       setPinnedImages((prev) => prev.filter((img) => img.fileKey !== selectedMedia.fileKey));
       toast.success("Media deleted successfully");
       setSelectedMedia(null);
-      await refreshPinnedImages();
     } catch (err) {
       console.error(err);
       toast.error((err as Error).message || "Failed to delete media");
@@ -215,10 +224,13 @@ export default function Dashboard() {
     if (!selectedMedia) return;
     const token = localStorage.getItem("token");
     if (!token) return;
+
     try {
       const response = await fetch(`/api/media/pin?fileKey=${selectedMedia.fileKey}`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
       if (!response.ok) {
         const data = await response.json();
@@ -230,7 +242,6 @@ export default function Dashboard() {
         )
       );
       toast.success("Media pinned successfully");
-      await refreshPinnedImages();
     } catch (err) {
       console.error(err);
       toast.error((err as Error).message || "Failed to pin media");
@@ -247,7 +258,8 @@ export default function Dashboard() {
       >
         View My Gallery
       </button>
-
+      
+      {/* Upload Form */}
       <form onSubmit={handleUpload} className="bg-white p-6 rounded shadow-md w-full max-w-md">
         <div className="mb-4">
           <label
@@ -274,25 +286,9 @@ export default function Dashboard() {
         >
           {loading ? (
             <>
-              <svg
-                className="animate-spin h-5 w-5 mr-3 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v8z"
-                ></path>
+              <svg className="animate-spin h-5 w-5 mr-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
               </svg>
               Uploading...
             </>
@@ -301,7 +297,8 @@ export default function Dashboard() {
           )}
         </button>
       </form>
-
+      
+      {/* Pinned Images Gallery */}
       <div className="w-full max-w-4xl bg-white p-6 rounded shadow-md">
         <h2 className="text-2xl font-bold mb-4 text-center">My Pinned Images</h2>
         {pinnedLoading ? (
@@ -317,11 +314,11 @@ export default function Dashboard() {
                 onClick={() => setSelectedMedia(img)}
               >
                 <Image
-                  src={img.url}
+                  // If a preview exists, it shows; otherwise, falls back to the main image.
+                  src={img.previewKey ? img.previewKey : img.url}
                   alt={img.fileKey}
                   fill
                   className="object-cover rounded"
-                  onError={() => console.log(`Image load error for ${img.url}`)}
                 />
                 <button
                   onClick={(e) => {
@@ -338,6 +335,7 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Modal for Gallery View */}
       {selectedMedia && (
         <div
           className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
@@ -348,6 +346,7 @@ export default function Dashboard() {
             className="relative bg-white p-4 rounded max-w-3xl w-full"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Navigation Buttons */}
             <div
               className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50"
               onClick={(e) => {
@@ -355,7 +354,9 @@ export default function Dashboard() {
                 handlePrevious();
               }}
             >
-              <button className="bg-gray-700 text-white p-2 rounded-full">‹</button>
+              <button className="bg-gray-700 text-white p-2 rounded-full">
+                &#8249;
+              </button>
             </div>
             <div
               className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50"
@@ -364,8 +365,11 @@ export default function Dashboard() {
                 handleNext();
               }}
             >
-              <button className="bg-gray-700 text-white p-2 rounded-full">›</button>
+              <button className="bg-gray-700 text-white p-2 rounded-full">
+                &#8250;
+              </button>
             </div>
+            {/* Close Button */}
             <div className="absolute top-2 right-2 flex space-x-2 z-50">
               <button
                 onClick={handleDelete}
@@ -373,9 +377,7 @@ export default function Dashboard() {
               >
                 Delete
               </button>
-              {selectedMedia.pinned === true ||
-              (typeof selectedMedia.pinned === "string" &&
-                selectedMedia.pinned.toLowerCase() === "true") ? (
+              {selectedMedia?.pinned === true ? (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -403,7 +405,7 @@ export default function Dashboard() {
                 Close
               </button>
             </div>
-            {selectedMedia.fileType.startsWith("image") ? (
+            {selectedMedia.fileType === "image" ? (
               <Image
                 src={selectedMedia.url}
                 alt={selectedMedia.fileKey}
@@ -411,13 +413,13 @@ export default function Dashboard() {
                 height={600}
                 className="w-full h-auto max-h-[80vh] object-contain"
               />
-            ) : selectedMedia.fileType.startsWith("video") ? (
+            ) : (
               <video
                 src={selectedMedia.url}
                 controls
                 className="w-full h-auto max-h-[80vh] object-contain"
               />
-            ) : null}
+            )}
             <p className="mt-2 text-sm text-gray-600 text-center">
               {selectedMedia.fileKey} <br />
               Uploaded: {new Date(selectedMedia.uploadDate).toLocaleString()}

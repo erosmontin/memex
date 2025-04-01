@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       });
       await s3Client.send(s3Command);
 
-      // Save metadata to DynamoDB
+      // Save metadata to DynamoDB with pinned default as false
       const dynamoCommand = new PutItemCommand({
         TableName: process.env.DYNAMODB_TABLE_NAME,
         Item: {
@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
           fileType: { S: fileType },
           uploadDate: { S: new Date().toISOString() },
           uploadedBy: { S: username },
+          pinned: { BOOL: false },
         },
       });
       await docClient.send(dynamoCommand);

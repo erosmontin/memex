@@ -12,6 +12,7 @@ type MediaItem = {
   uploadDate: string;
   uploadedBy: string;
   url: string;
+  pinned?: boolean; // Add pinned property to MediaItem type
 };
 
 export default function GalleryPage() {
@@ -28,16 +29,13 @@ export default function GalleryPage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const LIMIT = 12; // Number of items to fetch per page
 
-  // Fetch media from API with pagination
+  // Fetch media from API with pagination.
+  // If you want to fetch only pinned media, you can add "&pinned=true" to the URL.
   const fetchMedia = useCallback(async () => {
     setIsFetching(true);
     const token = localStorage.getItem("token");
     if (!token) {
-      try {
-        router.push("/");
-      } catch (err) {
-        console.error("Router push error:", err);
-      }
+      router.push("/");
       return;
     }
     try {
@@ -70,7 +68,8 @@ export default function GalleryPage() {
         );
         // Sort items by uploadDate descending (most recent first)
         unique.sort(
-          (a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime()
+          (a, b) =>
+            new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime()
         );
         return unique;
       });
@@ -139,7 +138,9 @@ export default function GalleryPage() {
         const data = await response.json();
         throw new Error(data.error || "Failed to delete media");
       }
-      setMedia(media.filter((item) => item.fileKey !== selectedMedia.fileKey));
+      setMedia((prev) =>
+        prev.filter((item) => item.fileKey !== selectedMedia.fileKey)
+      );
       toast.success("Media deleted successfully");
       closeModal();
     } catch (error) {
@@ -204,6 +205,73 @@ export default function GalleryPage() {
     setSelectedMedia(media[prevIndex]);
   };
 
+  // Handler for pinning a media item
+  const handlePin = async () => {
+    if (!selectedMedia) return;
+    const token = localStorage.getItem("token");
+    if (!token) return;
+  
+    try {
+      const response = await fetch(`/api/media/pin?fileKey=${selectedMedia.fileKey}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to pin image");
+      }
+      // Update the selectedMedia state and media list to reflect the new pinned status.
+      setSelectedMedia({ ...selectedMedia, pinned: true });
+      setMedia((prev) =>
+        prev.map((item) =>
+          item.fileKey === selectedMedia.fileKey ? { ...item, pinned: true } : item
+        )
+      );
+      toast.success("Image pinned successfully");
+    } catch (err) {
+      console.error(err);
+      toast.error((err as Error).message || "Failed to pin image");
+    }
+  };
+
+  // New handler for unpinning a media item
+  const handleUnpin = async (fileKey: string) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    try {
+      const response = await fetch(`/api/media/unpin?fileKey=${fileKey}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to unpin image");
+      }
+      // Update state to mark the media as unpinned.
+      setMedia((prev) =>
+        prev.map((item) =>
+          item.fileKey === fileKey ? { ...item, pinned: false } : item
+        )
+      );
+      if (selectedMedia && selectedMedia.fileKey === fileKey) {
+        setSelectedMedia({ ...selectedMedia, pinned: false });
+      }
+      toast.success("Image unpinned successfully");
+    } catch (err) {
+      console.error(err);
+      toast.error((err as Error).message || "Failed to unpin image");
+    }
+  };
+
+  // If you want the gallery to show only pinned media, uncomment the following line:
+  // const displayedMedia = media.filter((item) => item.pinned);
+  // Otherwise, use all media:
+  const displayedMedia = media;
+
   if (loading && page === 1) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -213,7 +281,11 @@ export default function GalleryPage() {
   }
 
   if (error) {
-    return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-500">
+        {error}
+      </div>
+    );
   }
 
   return (
@@ -222,31 +294,28 @@ export default function GalleryPage() {
       <h1 className="text-3xl font-bold text-center mb-8">My Media Gallery</h1>
       <button
         onClick={() => {
-          try {
-            router.push("/dashboard");
-          } catch (err) {
-            console.error("Router push error on back button:", err);
-          }
+          router.push("/dashboard");
         }}
         className="mb-4 bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
       >
         Back to Dashboard
       </button>
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-        {media.length === 0 ? (
+      <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-2">
+        {displayedMedia.length === 0 ? (
           <p className="text-center col-span-full">
             No media found. Upload some images or videos from the dashboard!
           </p>
         ) : (
-          media.map((item) => (
+          displayedMedia.map((item) => (
             <div
               key={item.fileKey}
               className="bg-white p-1 rounded shadow-md cursor-pointer"
               onClick={() => openModal(item)}
             >
-              {item.fileType === "image" ? (
+              {item.fileType.startsWith("image") ? (
                 <div className="relative w-full aspect-square">
                   <Image
+                    // Use previewKey if available, otherwise fallback to the original URL.
                     src={item.url}
                     alt={item.fileKey}
                     fill
@@ -279,7 +348,11 @@ export default function GalleryPage() {
             }
           }}
         >
-          <div ref={modalRef} className="relative bg-white p-4 rounded max-w-3xl w-full">
+          <div
+            ref={modalRef}
+            className="relative bg-white p-4 rounded max-w-3xl w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Navigation Buttons for Previous and Next */}
             <div
               className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50"
@@ -304,7 +377,7 @@ export default function GalleryPage() {
               </button>
             </div>
 
-            {/* Existing Delete and Close Buttons */}
+            {/* New Pin/Unpin, Delete and Close Buttons */}
             <div className="absolute top-2 right-2 flex space-x-2 z-50">
               <button
                 onClick={handleDelete}
@@ -312,10 +385,30 @@ export default function GalleryPage() {
               >
                 Delete
               </button>
+              {/* Conditionally render Pin/Unpin button */}
+              {selectedMedia.pinned ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleUnpin(selectedMedia.fileKey);
+                  }}
+                  className="bg-red-500 text-white p-2 rounded hover:bg-red-600"
+                >
+                  Unpin
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePin();
+                  }}
+                  className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+                >
+                  Pin
+                </button>
+              )}
               <button
-                onClick={() => {
-                  closeModal();
-                }}
+                onClick={closeModal}
                 className="bg-gray-500 text-white p-2 rounded hover:bg-gray-600"
               >
                 Close
@@ -323,7 +416,7 @@ export default function GalleryPage() {
             </div>
 
             {/* Media Display */}
-            {selectedMedia.fileType === "image" ? (
+            {selectedMedia.fileType.startsWith("image") ? (
               <Image
                 src={selectedMedia.url}
                 alt={selectedMedia.fileKey}

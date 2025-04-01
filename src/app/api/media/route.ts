@@ -1,12 +1,19 @@
 export const config = { runtime: "nodejs" };
 
 import { NextRequest, NextResponse } from "next/server";
-import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { DynamoDBClient, ScanCommand, DeleteItemCommand } from "@aws-sdk/client-dynamodb";
+import {
+  S3Client,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
+import {
+  DynamoDBClient,
+  ScanCommand,
+  DeleteItemCommand,
+} from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
 const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -40,7 +47,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Fetch media items from DynamoDB
+    // Fetch media items from DynamoDB for the verified user.
     console.log("Fetching media items from DynamoDB...");
     const scanCommand = new ScanCommand({
       TableName: process.env.DYNAMODB_TABLE_NAME,
@@ -52,21 +59,25 @@ export async function GET(request: NextRequest) {
     const dynamoData = await docClient.send(scanCommand);
     console.log("DynamoDB scan successful");
 
+    // Map items to include the pinned attribute and other necessary fields.
     const mediaItems = dynamoData.Items?.map((item) => ({
-      fileKey: item.fileKey.S!,
-      fileType: item.fileType.S!,
-      uploadDate: item.uploadDate.S!,
-      uploadedBy: item.uploadedBy.S!,
+      fileKey: item.fileKey?.S || item.fileKey,
+      fileType: item.fileType?.S || item.fileType,
+      uploadDate: item.uploadDate?.S || item.uploadDate,
+      uploadedBy: item.uploadedBy?.S || item.uploadedBy,
+      previewKey: item.previewKey?.S || item.previewKey,
+      // Convert the pinned attribute to a plain boolean.
+      pinned: item.pinned ? (item.pinned.S || item.pinned.BOOL || item.pinned) : false,
     })) || [];
 
-    // Generate presigned URLs for each media item
+    // Generate presigned URLs for each media item.
     const mediaWithUrls = await Promise.all(
       mediaItems.map(async (item) => {
         const getObjectCommand = new GetObjectCommand({
           Bucket: process.env.S3_BUCKET_NAME,
           Key: item.fileKey,
         });
-        const url = await getSignedUrl(s3Client, getObjectCommand, { expiresIn: 86400 }); // 24 hours expiry
+        const url = await getSignedUrl(s3Client, getObjectCommand, { expiresIn: 86400 }); // URL valid for 24 hours.
         return { ...item, url };
       })
     );
@@ -81,24 +92,24 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  // Extract fileKey from the query string
+  // Extract fileKey from the query string.
   const { searchParams } = new URL(request.url);
   const fileKey = searchParams.get("fileKey");
   if (!fileKey) {
     return NextResponse.json({ error: "fileKey is required" }, { status: 400 });
   }
 
-  // Optionally verify token/authorization here
+  // Optionally, add token verification/authorization logic here.
 
   try {
-    // Delete the file from S3
+    // Delete the file from S3.
     const s3DeleteCommand = new DeleteObjectCommand({
       Bucket: process.env.S3_BUCKET_NAME,
       Key: fileKey,
     });
     await s3Client.send(s3DeleteCommand);
 
-    // Delete the metadata from DynamoDB
+    // Delete the metadata from DynamoDB.
     const dynamoDeleteCommand = new DeleteItemCommand({
       TableName: process.env.DYNAMODB_TABLE_NAME,
       Key: {
@@ -110,9 +121,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ message: "File deleted successfully" });
   } catch (err) {
     console.error("Delete error:", err);
-    return NextResponse.json(
-      { error: (err as Error).message || "Failed to delete file" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: (err as Error).message || "Failed to delete file" }, { status: 500 });
   }
 }

@@ -1,27 +1,17 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: 'Gallery Web App - A Next.js application for uploading and managing media
-  files, deployed on AWS Lambda with API Gateway, S3, and DynamoDB.
-
-  '
+Description: Media Visualization App with S3-triggered image preview
 Parameters:
-  CognitoUserPoolId:
+  MediaBucketName:
     Type: String
-    Description: The ID of the Cognito User Pool for authentication
-  CognitoClientId:
-    Type: String
-    Description: The Client ID of the Cognito User Pool for authentication
-Globals:
-  Function:
-    Timeout: 30
-    MemorySize: 512
-    Runtime: nodejs18.x
+    Default: my-media-bucket-515966532699-us-east-1
+    Description: The name of the S3 bucket to store media files
 Resources:
   MediaBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName:
-        Fn::Sub: my-media-bucket-${AWS::AccountId}-${AWS::Region}
+        Ref: MediaBucketName
       CorsConfiguration:
         CorsRules:
         - AllowedHeaders:
@@ -29,10 +19,11 @@ Resources:
           AllowedMethods:
           - GET
           - PUT
+          - HEAD
+          - POST
           - DELETE
           AllowedOrigins:
           - '*'
-          MaxAge: 3000
   MediaTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -44,100 +35,43 @@ Resources:
       - AttributeName: fileKey
         KeyType: HASH
       BillingMode: PAY_PER_REQUEST
-  MediaAccessRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service: lambda.amazonaws.com
-          Action: sts:AssumeRole
-      Policies:
-      - PolicyName: MediaAccessPolicy
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action:
-            - s3:GetObject
-            - s3:PutObject
-            - s3:DeleteObject
-            Resource:
-              Fn::Sub: arn:aws:s3:::${MediaBucket}/*
-          - Effect: Allow
-            Action:
-            - dynamodb:GetItem
-            - dynamodb:PutItem
-            - dynamodb:DeleteItem
-            - dynamodb:Scan
-            Resource:
-              Fn::GetAtt:
-              - MediaTable
-              - Arn
-          - Effect: Allow
-            Action:
-            - logs:CreateLogGroup
-            - logs:CreateLogStream
-            - logs:PutLogEvents
-            Resource: '*'
-  GalleryFunction:
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+  MediaPreviewFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: GalleryFunction
+      Timeout: 60
+      MemorySize: 1024
+      CodeUri: MediaPreviewFunction
       Handler: index.handler
-      Role:
-        Fn::GetAtt:
-        - MediaAccessRole
-        - Arn
+      Runtime: nodejs18.x
+      Policies:
+      - S3CrudPolicy:
+          BucketName:
+            Ref: MediaBucketName
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: MediaTable
       Environment:
         Variables:
-          AWS_REGION:
-            Ref: AWS::Region
           S3_BUCKET_NAME:
-            Ref: MediaBucket
+            Ref: MediaBucketName
+          PREVIEW_FOLDER: previews
           DYNAMODB_TABLE_NAME:
             Ref: MediaTable
-          NEXT_PUBLIC_COGNITO_USER_POOL_ID:
-            Ref: CognitoUserPoolId
-          NEXT_PUBLIC_COGNITO_CLIENT_ID:
-            Ref: CognitoClientId
       Events:
-        Api:
-          Type: HttpApi
+        S3ResultsEvent:
+          Type: S3
           Properties:
-            ApiId:
-              Ref: GalleryApi
-            Path: /{proxy+}
-            Method: ANY
+            Bucket:
+              Ref: MediaBucket
+            Events: s3:ObjectCreated:*
     Metadata:
-      SamResourceId: GalleryFunction
-  GalleryApi:
-    Type: AWS::Serverless::HttpApi
-    Properties:
-      StageName: Prod
-      CorsConfiguration:
-        AllowOrigins:
-        - '*'
-        AllowHeaders:
-        - '*'
-        AllowMethods:
-        - GET
-        - POST
-        - DELETE
-        - OPTIONS
-        MaxAge: 600
+      SamResourceId: MediaPreviewFunction
 Outputs:
-  ApiUrl:
-    Description: URL of the API Gateway endpoint
-    Value:
-      Fn::Sub: https://${GalleryApi}.execute-api.${AWS::Region}.amazonaws.com/Prod
   MediaBucketName:
-    Description: Name of the S3 bucket for media storage
     Value:
       Ref: MediaBucket
   MediaTableName:
-    Description: Name of the DynamoDB table for media metadata
     Value:
       Ref: MediaTable
