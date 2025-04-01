@@ -47,7 +47,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Fetch media items from DynamoDB for the verified user.
     console.log("Fetching media items from DynamoDB...");
     const scanCommand = new ScanCommand({
       TableName: process.env.DYNAMODB_TABLE_NAME,
@@ -59,22 +58,30 @@ export async function GET(request: NextRequest) {
     const dynamoData = await docClient.send(scanCommand);
     console.log("DynamoDB scan successful");
 
-    // Map items to include the pinned attribute and other necessary fields.
-    const mediaItems = dynamoData.Items?.map((item) => ({
-      fileKey: item.fileKey?.S || item.fileKey,
-      fileType: item.fileType?.S || item.fileType,
-      uploadDate: item.uploadDate?.S || item.uploadDate,
-      uploadedBy: item.uploadedBy?.S || item.uploadedBy,
-      previewKey: item.previewKey?.S || item.previewKey,
-      // Convert the pinned attribute to a plain boolean.
-      pinned: item.pinned ? (item.pinned.S || item.pinned.BOOL || item.pinned) : false,
-    })) || [];
+    const mediaItems = dynamoData.Items?.map((item) => {
+      // Explicitly determine the pinned status
+      let isPinned = false;
+      if (item.pinned && typeof item.pinned.BOOL !== "undefined") {
+        isPinned = item.pinned.BOOL; // Directly use the BOOL value if it exists
+      } else if (item.pinned && item.pinned.S) {
+        // Handle string values if they exist (e.g., "true" or "false")
+        isPinned = item.pinned.S.toLowerCase() === "true";
+      }
 
-    // Generate presigned URLs for each media item.
+      return {
+        fileKey: item.fileKey?.S || item.fileKey,
+        fileType: item.fileType?.S || item.fileType,
+        uploadDate: item.uploadDate?.S || item.uploadDate,
+        uploadedBy: item.uploadedBy?.S || item.uploadedBy,
+        previewKey: item.previewKey?.S || item.previewKey,
+        pinned: isPinned, // Use the normalized boolean value
+      };
+    }) || [];
+
     const mediaWithUrls = await Promise.all(
       mediaItems.map(async (item) => {
-        // Convert fileKey explicitly to string.
-        const fileKey: string = typeof item.fileKey === "string" ? item.fileKey : (item.fileKey?.S as string);
+        const fileKey: string =
+          typeof item.fileKey === "string" ? item.fileKey : (item.fileKey?.S as string);
         const fileUrl = await getSignedUrl(
           s3Client,
           new GetObjectCommand({
@@ -84,7 +91,6 @@ export async function GET(request: NextRequest) {
           { expiresIn: 6400 }
         );
 
-        // Generate a signed URL for the preview if available.
         let previewUrl = "";
         if (item.previewKey) {
           const pKey: string =
@@ -112,24 +118,19 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  // Extract fileKey from the query string.
   const { searchParams } = new URL(request.url);
   const fileKey = searchParams.get("fileKey");
   if (!fileKey) {
     return NextResponse.json({ error: "fileKey is required" }, { status: 400 });
   }
 
-  // Optionally, add token verification/authorization logic here.
-
   try {
-    // Delete the file from S3.
     const s3DeleteCommand = new DeleteObjectCommand({
       Bucket: process.env.S3_BUCKET_NAME,
       Key: fileKey,
     });
     await s3Client.send(s3DeleteCommand);
 
-    // Delete the metadata from DynamoDB.
     const dynamoDeleteCommand = new DeleteItemCommand({
       TableName: process.env.DYNAMODB_TABLE_NAME,
       Key: {

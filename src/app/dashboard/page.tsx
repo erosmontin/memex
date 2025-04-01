@@ -26,12 +26,19 @@ export default function Dashboard() {
   const [pinnedImages, setPinnedImages] = useState<MediaItem[]>([]);
   const [pinnedLoading, setPinnedLoading] = useState<boolean>(true);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const [userName, setUserName] = useState<string>("");
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       router.push("/");
+    } else {
+      // Retrieve user's name from localStorage (or decode your token)
+      
+      
+      const name = localStorage.getItem("email") || "User";
+      setUserName(name);
     }
   }, [router]);
 
@@ -253,7 +260,11 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 space-y-8">
       <ToastContainer />
-      <h1 className="text-3xl font-bold mb-8">Welcome to the Dashboard!</h1>
+
+      <h1 className="text-3xl font-bold mb-4">
+        Welcome, {userName}!
+      </h1>
+
       <button
         onClick={() => router.push("/gallery")}
         className="mb-4 bg-green-500 text-white p-2 rounded hover:bg-green-600"
@@ -420,12 +431,11 @@ export default function Dashboard() {
               <Image
                 src={selectedMedia.url}
                 alt={selectedMedia.fileKey}
-                  layout="responsive"
+                layout="responsive"
                 width={500}
                 height={500}
-                
                 className="w-full h-auto max-h-[80vh] object-contain"
-                />
+              />
             ) : selectedMedia.fileType.startsWith("video") ? (
               <video
                 src={selectedMedia.url}
