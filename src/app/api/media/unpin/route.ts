@@ -3,13 +3,9 @@ import { DynamoDBClient, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 
 export const config = { runtime: "nodejs" };
 
-const region = process.env.MEX_AWS_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION;
+const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_COGNITO_REGION;
 const dynamoClient = new DynamoDBClient({ 
-  region,
-  credentials: {
-    accessKeyId: process.env.MEX_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.MEX_AWS_SECRET_ACCESS_KEY!,
-  },
+  region, 
 });
 
 export async function POST(request: NextRequest) {
